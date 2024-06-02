@@ -9,4 +9,9 @@ http = "1"
 urlencoding = "2"
 
 [dev-dependencies]
+rodio = { version = "0.18.1", default-features = false, features = [
+    "symphonia-all",
+] }
 rstest = "0.21.0"
+stream-download = { version = "0.5.2", features = ["reqwest-rustls"] }
+tokio = { version = "1.38.0", features = ["rt-multi-thread", "macros"] }
