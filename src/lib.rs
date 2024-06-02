@@ -7,7 +7,7 @@ use std::{
 
 use http::{HeaderMap, HeaderValue};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct IcyHeaders {
     bitrate: Option<u32>,
     genre: Option<String>,
@@ -67,12 +67,15 @@ impl IcyHeaders {
                 headers,
             )
             .and_then(|val| Some(val.to_str().ok()?.to_string()))
-            .map(|public| public == "1" || public.to_ascii_lowercase() == "true"),
+            .map(|public| {
+                // 1 and 0 are the only supported values, but we'll look for "true" as well because... why not
+                public == "1" || public.to_ascii_lowercase() == "true"
+            }),
             meta_interval: headers
                 .get("icy-metaint")
                 .and_then(|val| val.to_str().ok()?.to_string().parse().ok()),
             audio_info: headers.get("ice-audio-info").and_then(|val| {
-                let map = parse_delimited_string(val.to_str().ok()?);
+                let ParseResult { map, .. } = parse_delimited_string(val.to_str().ok()?);
                 Some(IcyAudioInfo::parse_from_map(map))
             }),
         }
@@ -119,11 +122,12 @@ impl IcyHeaders {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct IcyAudioInfo {
     sample_rate: Option<u32>,
     bitrate: Option<u32>,
     channels: Option<u16>,
+    quality: Option<String>,
     custom: HashMap<String, String>,
 }
 
@@ -133,9 +137,16 @@ impl IcyAudioInfo {
             sample_rate: None,
             bitrate: None,
             channels: None,
+            quality: None,
             custom: HashMap::new(),
         };
         for (key, value) in map {
+            let Ok(key) = urlencoding::decode(key) else {
+                continue;
+            };
+            let Ok(value) = urlencoding::decode(value) else {
+                continue;
+            };
             match key.to_ascii_lowercase().as_str() {
                 "icy-samplerate" | "ice-samplerate" | "samplerate" => {
                     info.sample_rate = value.parse().ok();
@@ -145,6 +156,9 @@ impl IcyAudioInfo {
                 }
                 "icy-channels" | "ice-channels" | "channels" => {
                     info.channels = value.parse().ok();
+                }
+                "icy-quality" | "ice-quality" | "quality" => {
+                    info.quality = value.parse().ok();
                 }
                 _ => {
                     info.custom.insert(key.to_string(), value.to_string());
@@ -166,6 +180,10 @@ impl IcyAudioInfo {
         self.channels
     }
 
+    pub fn quality(&self) -> Option<&str> {
+        self.quality.as_deref()
+    }
+
     pub fn custom(&self) -> &HashMap<String, String> {
         &self.custom
     }
@@ -185,6 +203,8 @@ pub struct IcyMetadataReader<T> {
     inner: T,
     icy_metaint: usize,
     next_metadata: usize,
+    last_metadata_size: usize,
+    current_pos: u64,
     on_metadata_read: Box<dyn Fn(IcyMetadata) + Send + Sync>,
 }
 
@@ -198,7 +218,78 @@ impl<T> IcyMetadataReader<T> {
             icy_metaint: icy_metaint.get(),
             on_metadata_read: Box::new(on_metadata_read),
             next_metadata: icy_metaint.get(),
+            last_metadata_size: 0,
+            current_pos: 0,
         }
+    }
+}
+
+// The metadata length block must be multiplied by 16 to get the total metadata length
+// info taken from here https://gist.github.com/niko/2a1d7b2d109ebe7f7ca2f860c3505ef0
+const ICY_METADATA_MULTIPLIER: usize = 16;
+
+impl<T> IcyMetadataReader<T>
+where
+    T: Read,
+{
+    fn parse_metadata_from_stream(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let to_fill = buf.len();
+        let mut total_written = 0;
+        while total_written < to_fill {
+            let prev_written = total_written;
+            self.parse_next_metadata(buf, &mut total_written)?;
+            // No additional data written, we're at the end of the stream
+            if total_written == prev_written {
+                break;
+            }
+        }
+        self.current_pos += total_written as u64;
+        Ok(total_written)
+    }
+
+    fn parse_next_metadata(&mut self, buf: &mut [u8], total_written: &mut usize) -> io::Result<()> {
+        let to_fill = buf.len();
+
+        if self.next_metadata > 0 {
+            // Read data before next metadata
+            let written = self.inner.read(&mut buf[..self.next_metadata])?;
+            if written == 0 {
+                return Ok(());
+            }
+            *total_written += written;
+        }
+
+        self.read_metadata()?;
+        self.next_metadata = self.icy_metaint;
+        let start = *total_written;
+
+        // make sure we don't exceed the buffer length
+        let end = (start + self.next_metadata).min(to_fill);
+        let written = self.inner.read(&mut buf[start..end])?;
+        *total_written += written;
+        self.next_metadata = self.icy_metaint - written;
+        Ok(())
+    }
+
+    fn read_metadata(&mut self) -> io::Result<()> {
+        let mut metadata_length_buf = [0u8; 1];
+        self.inner.read_exact(&mut metadata_length_buf)?;
+
+        let metadata_length = metadata_length_buf[0] as usize * ICY_METADATA_MULTIPLIER;
+        self.last_metadata_size = metadata_length + 1;
+        if metadata_length > 0 {
+            let mut metadata_buf = vec![0u8; metadata_length];
+            self.inner.read_exact(&mut metadata_buf)?;
+
+            if let Ok(metadata_str) = String::from_utf8(metadata_buf) {
+                // trim any null bytes at the end
+                let metadata_str = metadata_str.trim_end_matches(char::from(0));
+                if let Ok(metadata) = metadata_str.parse::<IcyMetadata>() {
+                    (self.on_metadata_read)(metadata);
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -206,73 +297,57 @@ impl<T> Read for IcyMetadataReader<T>
 where
     T: Read,
 {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if buf.len() > self.next_metadata {
-            let to_fill = buf.len();
-            let mut total_written = 0;
-            while total_written < to_fill {
-                if self.next_metadata > 0 {
-                    // Read data before next metadata
-                    let written = self.inner.read(&mut buf[..self.next_metadata])?;
-                    if written == 0 {
-                        return Ok(total_written);
-                    }
-                    total_written += written;
-                }
-
-                // Read metadata
-                let mut metadata_length_buf = [0u8; 1];
-                self.inner.read_exact(&mut metadata_length_buf)?;
-                let metadata_length = metadata_length_buf[0] as usize * 16;
-                if metadata_length > 0 {
-                    let mut metadata_buf = vec![0u8; metadata_length];
-                    self.inner.read_exact(&mut metadata_buf)?;
-
-                    if let Ok(metadata_str) = String::from_utf8(metadata_buf) {
-                        // trim any null bytes at the end
-                        let metadata_str = metadata_str.trim_end_matches(char::from(0));
-                        if let Ok(metadata) = metadata_str.parse::<IcyMetadata>() {
-                            (self.on_metadata_read)(metadata);
-                        }
-                    }
-                }
-
-                self.next_metadata = self.icy_metaint;
-                let written = self.inner.read(
-                    &mut buf[total_written..(total_written + self.next_metadata).min(to_fill)],
-                )?;
-                total_written += written;
-                self.next_metadata = self.icy_metaint - written;
-            }
-            return Ok(total_written);
+            self.parse_metadata_from_stream(buf)
+        } else {
+            let read = self.inner.read(buf)?;
+            self.next_metadata -= read;
+            self.current_pos += read as u64;
+            Ok(read)
         }
-
-        let read = self.inner.read(buf)?;
-        self.next_metadata -= read;
-        Ok(read)
     }
 }
 
 impl<T> Seek for IcyMetadataReader<T>
 where
-    T: Seek,
+    T: Read + Seek,
 {
-    fn seek(&mut self, seek_from: std::io::SeekFrom) -> std::io::Result<u64> {
-        match seek_from {
-            SeekFrom::Start(pos) => {
-                self.next_metadata = self.icy_metaint - ((pos as usize) % self.icy_metaint);
-            }
-            SeekFrom::Current(pos) => {
-                self.next_metadata -= (pos % self.icy_metaint as i64) as usize;
-            }
+    fn seek(&mut self, seek_from: io::SeekFrom) -> io::Result<u64> {
+        let (requested_change, requested_pos) = match seek_from {
+            SeekFrom::Start(pos) => (pos as i64 - self.current_pos as i64, pos as i64),
+            SeekFrom::Current(pos) => (pos, self.current_pos as i64 + pos),
             SeekFrom::End(_) => {
                 return Err(io::Error::new(
                     io::ErrorKind::Unsupported,
                     "seek from end not supported",
-                ));
+                ))
             }
+        };
+
+        let current_absolute_pos = self.inner.stream_position()? as i64;
+        let mut seek_progress = 0i64;
+        if requested_change < 0 {
+            let last_metadata_pos = (self.icy_metaint - self.next_metadata) as i64;
+            let last_metadata_end = current_absolute_pos - last_metadata_pos;
+
+            if current_absolute_pos + requested_change < last_metadata_end {
+                self.inner.seek(SeekFrom::Current(
+                    -(self.last_metadata_size as i64 + last_metadata_pos),
+                ))?;
+                seek_progress -= last_metadata_pos;
+            }
+        } else if requested_change >= self.next_metadata as i64 {
+            self.inner
+                .seek(SeekFrom::Current(self.next_metadata as i64))?;
+            seek_progress += self.next_metadata as i64;
+            self.read_metadata()?;
         }
-        self.inner.seek(seek_from)
+        self.inner
+            .seek(SeekFrom::Current(requested_change - seek_progress))?;
+        self.next_metadata = self.icy_metaint - ((requested_pos as usize) % self.icy_metaint);
+        self.current_pos = requested_pos as u64;
+        Ok(self.current_pos)
     }
 }
 
@@ -307,11 +382,19 @@ impl FromStr for IcyMetadata {
             custom: HashMap::new(),
         };
 
-        let map = parse_delimited_string(s);
+        let ParseResult {
+            map,
+            errors_found,
+            missing_quotes_found,
+        } = parse_delimited_string(s);
         if map.is_empty() {
             return Err(());
         }
+
+        let mut fields_found = 0;
+        let mut stray_values_found = false;
         for (key, value) in map {
+            fields_found += 1;
             match key.to_ascii_lowercase().as_str() {
                 "streamtitle" => {
                     metadata.track_title = Some(value.to_string());
@@ -321,7 +404,17 @@ impl FromStr for IcyMetadata {
                 }
                 _ => {
                     metadata.custom.insert(key.to_string(), value.to_string());
+                    stray_values_found = true;
                 }
+            }
+        }
+        // Escaping characters like quotes, semicolons, and equal signs within the metadata string doesn't seem to be well-defined
+        // Here we try to handle the scenario where a stray semicolon in one of the values messes with the parsing
+        // by relying on the fact that StreamTitle and StreamUrl should be the only valid keys
+        if errors_found || stray_values_found {
+            let semicolon_count = s.chars().filter(|c| *c == ';').count();
+            if semicolon_count > fields_found || missing_quotes_found {
+                handle_unescaped_values(s, &mut metadata);
             }
         }
 
@@ -329,19 +422,103 @@ impl FromStr for IcyMetadata {
     }
 }
 
-fn parse_delimited_string(val: &str) -> HashMap<&str, &str> {
+fn handle_unescaped_values(s: &str, metadata: &mut IcyMetadata) {
+    let stream_title_index = s
+        .find("StreamTitle=")
+        .or_else(|| s.find("streamTitle="))
+        .or_else(|| s.find("Streamtitle="))
+        .or_else(|| s.find("streamtitle="));
+
+    let stream_url_index = s
+        .find("StreamUrl=")
+        .or_else(|| s.find("streamUrl="))
+        .or_else(|| s.find("Streamurl="))
+        .or_else(|| s.find("streamurl="));
+    let (stream_title, stream_url) = match (stream_title_index, stream_url_index) {
+        (Some(stream_title_index), Some(stream_url_index)) => {
+            let (stream_title, stream_url) = if stream_title_index < stream_url_index {
+                let stream_title = &s[stream_title_index..stream_url_index];
+                let stream_url = &s[stream_url_index..];
+                (stream_title, stream_url)
+            } else {
+                let stream_url = &s[stream_url_index..stream_title_index];
+                let stream_title = &s[stream_title_index..];
+                (stream_title, stream_url)
+            };
+            (Some(stream_title), Some(stream_url))
+        }
+        (Some(stream_title_index), None) => {
+            let stream_title = &s[stream_title_index..];
+            (Some(stream_title), None)
+        }
+        (None, Some(stream_url_index)) => {
+            let stream_url = &s[stream_url_index..];
+            (None, Some(stream_url))
+        }
+        (None, None) => (None, None),
+    };
+
+    if let Some(stream_title) = stream_title {
+        metadata.track_title = parse_value_if_valid(stream_title);
+    };
+
+    if let Some(stream_url) = stream_url {
+        metadata.stream_url = parse_value_if_valid(stream_url);
+    };
+}
+
+fn parse_value_if_valid(s: &str) -> Option<String> {
+    let s = if s.ends_with(';') {
+        s.trim_end_matches(';')
+    } else {
+        s
+    };
+    if let (Some((_, s)), _) = parse_key_value(s) {
+        Some(s.to_string())
+    } else {
+        None
+    }
+}
+
+struct ParseResult<'a> {
+    map: HashMap<&'a str, &'a str>,
+    errors_found: bool,
+    missing_quotes_found: bool,
+}
+
+fn parse_delimited_string(val: &str) -> ParseResult {
     let elements = val.trim().split(';');
     let mut map = HashMap::new();
+    let mut errors_found = false;
+    let mut missing_quotes_found = false;
     for element in elements {
-        let kv: Vec<_> = element.split('=').collect();
-        if kv.len() != 2 {
-            continue;
+        if let (Some((key, value)), missing_quotes) = parse_key_value(element) {
+            map.insert(key, value);
+            if missing_quotes {
+                missing_quotes_found = true;
+            }
+        } else {
+            errors_found = true;
         }
-        let (key, mut value) = (kv[0].trim(), kv[1].trim());
-        if value.starts_with('\'') && value.ends_with('\'') {
-            value = &value[1..value.len() - 1];
-        }
-        map.insert(key, value);
     }
-    map
+    ParseResult {
+        map,
+        missing_quotes_found,
+        errors_found,
+    }
+}
+
+fn parse_key_value(val: &str) -> (Option<(&str, &str)>, bool) {
+    let kv: Vec<_> = val.splitn(2, '=').collect();
+    if kv.len() != 2 {
+        return (None, false);
+    }
+    let (key, mut value) = (kv[0].trim(), kv[1].trim());
+    let mut missing_quotes = false;
+    if value.starts_with('\'') && value.ends_with('\'') && value.len() > 1 {
+        value = &value[1..value.len() - 1];
+    } else {
+        missing_quotes = true;
+    }
+    (Some((key, value)), missing_quotes)
 }

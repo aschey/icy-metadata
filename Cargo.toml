@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 http = "1"
+urlencoding = "2"
 
 [dev-dependencies]
-rstest = "0.20.0"
+rstest = "0.21.0"

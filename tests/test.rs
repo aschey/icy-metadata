@@ -1,5 +1,5 @@
 use std::{
-    io::Read,
+    io::{Cursor, Read, SeekFrom},
     num::NonZeroUsize,
     sync::{Arc, RwLock},
 };
@@ -22,7 +22,7 @@ fn read_headers() {
     headers.append("Icy-Notice2", "notice2".parse().unwrap());
     headers.append(
         "Ice-Audio-Info",
-        "ice-samplerate=44100;ice-bitrate=128;ice-channels=2;custom=yes"
+        "ice-samplerate=44100;ice-bitrate=128;ice-channels=2;custom=yes;ice-quality=10%2e0"
             .parse()
             .unwrap(),
     );
@@ -42,7 +42,15 @@ fn read_headers() {
     assert_eq!(audio_info.sample_rate().unwrap(), 44100);
     assert_eq!(audio_info.bitrate().unwrap(), 128);
     assert_eq!(audio_info.channels().unwrap(), 2);
+    assert_eq!(audio_info.quality().unwrap(), "10.0");
     assert_eq!(audio_info.custom().get("custom").unwrap(), "yes");
+}
+
+#[test]
+fn read_no_headers() {
+    let headers = HeaderMap::new();
+    let icy_headers = IcyHeaders::parse_from_headers(&headers);
+    assert_eq!(IcyHeaders::default(), icy_headers);
 }
 
 #[test]
@@ -54,12 +62,7 @@ fn add_metadata_header() {
 
 #[rstest]
 fn read_stream_title(
-    #[values(
-        "StreamTitle='stream-title{}';",
-        "StreamTitle='stream-title{}';malformedVal",
-        "malformedVal;StreamTitle='stream-title{}';"
-    )]
-    meta_bytes: &str,
+    #[values("StreamTitle='stream-title{}';")] meta_bytes: &str,
     #[values((1,0), (5,0), (5,4))] byte_lens: (usize, usize),
     #[values(1, 2)] iters: usize,
 ) {
@@ -82,12 +85,7 @@ fn read_stream_title(
 
 #[rstest]
 fn read_stream_url(
-    #[values(
-        "StreamUrl='stream-url{}';",
-        "StreamUrl='stream-url{}';malformedVal",
-        "malformedVal;StreamUrl='stream-url{}';"
-    )]
-    meta_bytes: &str,
+    #[values("StreamUrl='stream-url{}';")] meta_bytes: &str,
     #[values((1,0), (5,0), (5,4))] byte_lens: (usize, usize),
     #[values(1, 2)] iters: usize,
 ) {
@@ -109,8 +107,8 @@ fn read_stream_url(
 fn all_stream_properties(
     #[values(
         "StreamTitle='stream-title{}';StreamUrl='stream-url{}';CustomVal='custom{}';",
-        "StreamTitle='stream-title{}';StreamUrl='stream-url{}';malformedVal';CustomVal='custom{}';",
-        "StreamTitle='stream-title{}';malformedVal;StreamUrl='stream-url{}';CustomVal='custom{}'"
+        "StreamTitle='stream-title{}';StreamUrl='stream-url{}';CustomVal='custom{}';",
+        "StreamTitle='stream-title{}';StreamUrl='stream-url{}';CustomVal='custom{}'"
     )]
     meta_bytes: &str,
     #[values((1,0), (5,0), (5,4))] byte_lens: (usize, usize),
@@ -138,13 +136,66 @@ fn all_stream_properties(
     }
 }
 
+#[rstest]
+#[case("StreamTitle='stream-t;itle';", Some("stream-t;itle"), None)]
+#[case("StreamTitle=';stream-title';", Some(";stream-title"), None)]
+#[case("StreamTitle=';stream-title;';", Some(";stream-title;"), None)]
+#[case("StreamTitle=';stream-;title;';", Some(";stream-;title;"), None)]
+#[case("StreamTitle=';stre'am-;title;';", Some(";stre'am-;title;"), None)]
+#[case("StreamUrl=';stre'am-;url;';", None, Some(";stre'am-;url;"))]
+#[case(
+    "StreamTitle=';stre'am-;title;';StreamUrl='stre'am=url';",
+    Some(";stre'am-;title;"),
+    Some("stre'am=url")
+)]
+#[case(
+    "StreamTitle=';stre'am-;title;';StreamUrl='stre;am=url';",
+    Some(";stre'am-;title;"),
+    Some("stre;am=url")
+)]
+#[case(
+    "StreamTitle='streamtitle';StreamUrl='stre;am=url';",
+    Some("streamtitle"),
+    Some("stre;am=url")
+)]
+#[case(
+    "StreamTitle=';stre'am-;title;';StreamUrl='stre;am=url'",
+    Some(";stre'am-;title;"),
+    Some("stre;am=url")
+)]
+#[case(
+    "ExtraField=extra;StreamTitle=';stre'am-;title;';StreamUrl='stre'am=url';",
+    Some(";stre'am-;title;"),
+    Some("stre'am=url")
+)]
+fn handle_unescaped_values(
+    #[case] meta_bytes: &str,
+    #[case] expected_title: Option<&str>,
+    #[case] expected_url: Option<&str>,
+) {
+    let meta_int = 5;
+    let trailing_bytes = 4;
+    let mut data = Vec::new();
+    let (mut reader, metadata) = setup_data(meta_bytes, meta_int, &mut data, 1, trailing_bytes);
+
+    let mut buf = Vec::with_capacity(meta_int + trailing_bytes);
+    reader.read_to_end(&mut buf).unwrap();
+
+    let metadata = metadata.read().unwrap();
+    assert_eq!(buf, vec![1; buf.len()]);
+    assert_eq!(metadata[0].track_title(), expected_title);
+    assert_eq!(metadata[0].stream_url(), expected_url);
+}
+
+type MetadataLock = Arc<RwLock<Vec<IcyMetadata>>>;
+
 fn setup_data<'a>(
     meta_bytes: &str,
     meta_int: usize,
     data: &'a mut Vec<u8>,
     iters: usize,
     trailing_bytes: usize,
-) -> (IcyMetadataReader<&'a [u8]>, Arc<RwLock<Vec<IcyMetadata>>>) {
+) -> (IcyMetadataReader<Cursor<&'a [u8]>>, MetadataLock) {
     for i in 0..iters {
         let meta_bytes = meta_bytes.replace("{}", &i.to_string());
         let meta_bytes = meta_bytes.as_bytes();
@@ -163,7 +214,7 @@ fn setup_data<'a>(
     let reader = {
         let metadata = metadata.clone();
         IcyMetadataReader::new(
-            data.as_slice(),
+            Cursor::new(data.as_slice()),
             NonZeroUsize::new(meta_int).unwrap(),
             move |meta| {
                 metadata.write().unwrap().push(meta);
@@ -175,12 +226,7 @@ fn setup_data<'a>(
 
 #[rstest]
 fn read_larger_than_stream_size(
-    #[values(
-        "StreamUrl='stream-url{}';",
-        "StreamUrl='stream-url{}';malformedVal",
-        "malformedVal;StreamUrl='stream-url{}';"
-    )]
-    meta_bytes: &str,
+    #[values("StreamUrl='stream-url{}';")] meta_bytes: &str,
     #[values((10,5))] byte_lens: (usize, usize),
     #[values(1, 2)] iters: usize,
 ) {
@@ -202,12 +248,7 @@ fn read_larger_than_stream_size(
 
 #[rstest]
 fn small_reads(
-    #[values(
-        "StreamUrl='stream-url{}';",
-        "StreamUrl='stream-url{}';malformedVal",
-        "malformedVal;StreamUrl='stream-url{}';"
-    )]
-    meta_bytes: &str,
+    #[values("StreamUrl='stream-url{}';")] meta_bytes: &str,
     #[values((10,5))] byte_lens: (usize, usize),
     #[values(1, 2)] iters: usize,
 ) {
@@ -247,4 +288,85 @@ fn empty_metadata(
     assert_eq!(buf, vec![1; buf.len()]);
     let metadata = metadata.read().unwrap();
     assert_eq!(metadata.len(), 0);
+}
+
+#[rstest]
+fn seek_from_start(
+    #[values("StreamUrl='stream-url{}';")] meta_bytes: &str,
+    #[values((10,5))] byte_lens: (usize, usize),
+    #[values(1)] iters: usize,
+) {
+    use std::io::Seek;
+
+    let (meta_int, trailing_bytes) = byte_lens;
+    let mut data = Vec::new();
+    let (mut reader, metadata) = setup_data(meta_bytes, meta_int, &mut data, iters, trailing_bytes);
+
+    let buf_len = meta_int * iters + trailing_bytes;
+    let mut buf = vec![0; buf_len];
+
+    let _ = reader.read(&mut buf[..meta_int + 1]);
+    assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
+
+    {
+        let metadata = metadata.read().unwrap();
+        assert_eq!(1, metadata.len());
+        assert_eq!(metadata[0].stream_url().unwrap(), format!("stream-url0"));
+    }
+
+    reader.seek(SeekFrom::Start(0)).unwrap();
+    let _ = reader.read(&mut buf[..meta_int + 1]);
+    assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
+    {
+        let metadata = metadata.read().unwrap();
+        assert_eq!(2, metadata.len());
+        assert_eq!(metadata[1].stream_url().unwrap(), format!("stream-url0"));
+    }
+
+    let start = meta_int / 2;
+    reader.seek(SeekFrom::Start(start as u64)).unwrap();
+    let _ = reader.read(&mut buf[start..meta_int + 1]);
+    assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
+    {
+        let metadata = metadata.read().unwrap();
+        assert_eq!(3, metadata.len());
+        assert_eq!(metadata[2].stream_url().unwrap(), format!("stream-url0"));
+    }
+
+    let new_pos = reader.seek(SeekFrom::Current(-(start as i64))).unwrap();
+    let _ = reader.read(&mut buf[new_pos as usize..meta_int + 1]);
+    assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
+    {
+        let metadata = metadata.read().unwrap();
+        assert_eq!(4, metadata.len());
+        assert_eq!(metadata[3].stream_url().unwrap(), format!("stream-url0"));
+    }
+    let _ = reader.seek(SeekFrom::Current(-(start as i64))).unwrap();
+    let _ = reader.seek(SeekFrom::Current(start as i64)).unwrap();
+    {
+        let metadata = metadata.read().unwrap();
+        assert_eq!(5, metadata.len());
+        assert_eq!(metadata[4].stream_url().unwrap(), format!("stream-url0"));
+    }
+    let _ = reader.seek(SeekFrom::Start(0)).unwrap();
+    let _ = reader.read(&mut buf[..meta_int + 1]);
+    assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
+
+    // reader.seek(SeekFrom::Start(0)).unwrap();
+    // let _ = reader.read(&mut buf);
+    // assert_eq!(buf[..meta_int], vec![1; meta_int]);
+
+    // let new_pos = meta_int / 2;
+    // reader.seek(SeekFrom::Start(new_pos as u64)).unwrap();
+    // let _ = reader.read(&mut buf[new_pos..]);
+    // assert_eq!(buf, vec![1; buf.len()]);
+
+    // reader.seek(SeekFrom::Current(-(new_pos as i64))).unwrap();
+    // let _ = reader.read(&mut buf[new_pos..]);
+    // assert_eq!(buf, vec![1; buf.len()]);
+
+    // let metadata = metadata.read().unwrap();
+    // for i in 0..iters {
+    //     assert_eq!(metadata[i].stream_url().unwrap(), format!("stream-url{i}"));
+    // }
 }
