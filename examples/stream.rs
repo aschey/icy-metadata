@@ -14,6 +14,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let sink = rodio::Sink::try_new(&handle)?;
 
     let mut headers = reqwest::header::HeaderMap::new();
+    // We need to add a header to tell the Icecast server that we can parse the metadata embedded
+    // within the stream itself.
     headers.request_icy_metadata();
     let client = Client::builder().default_headers(headers).build()?;
 
@@ -42,6 +44,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .await?;
     sink.append(rodio::Decoder::new(IcyMetadataReader::new(
         reader,
+        // Since we requested icy metadata, the metaint header should be present in the response
+        // which will allow us to parse the metadata within the stream
         icy_headers.meta_interval(),
         |metadata| println!("{metadata:#?}\n"),
     ))?);
