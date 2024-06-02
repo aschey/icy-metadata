@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 http = "1"
 urlencoding = "2"
-serde = { version = "1", features = ["derive"], optional = true }
+serde = { version = "1.0.134", features = ["derive"], optional = true }
 
 [dev-dependencies]
 rodio = { version = "0.18.1", default-features = false, features = [
