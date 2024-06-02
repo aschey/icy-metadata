@@ -6,6 +6,7 @@ use http::{HeaderMap, HeaderValue};
 use crate::parse::{parse_delimited_string, ParseResult};
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IcyHeaders {
     bitrate: Option<u32>,
     genre: Option<String>,
@@ -122,6 +123,7 @@ impl IcyHeaders {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IcyAudioInfo {
     sample_rate: Option<u32>,
     bitrate: Option<u32>,

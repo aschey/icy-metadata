@@ -175,6 +175,7 @@ where
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IcyMetadata {
     track_title: Option<String>,
     stream_url: Option<String>,
