@@ -3,7 +3,10 @@ use std::num::NonZeroUsize;
 use std::sync::{Arc, RwLock};
 
 use http::HeaderMap;
-use icy_metadata::{IcyHeaders, IcyMetadata, IcyMetadataReader, RequestIcyMetadata};
+use icy_metadata::{
+    EmptyMetadataError, IcyHeaders, IcyMetadata, IcyMetadataReader, MetadataParseError,
+    RequestIcyMetadata,
+};
 use rstest::rstest;
 
 #[test]
@@ -75,7 +78,7 @@ fn read_stream_title(
     let metadata = metadata.read().unwrap();
     for i in 0..iters {
         assert_eq!(
-            metadata[i].track_title().unwrap(),
+            metadata[i].clone().unwrap().track_title().unwrap(),
             format!("stream-title{i}")
         );
     }
@@ -97,7 +100,10 @@ fn read_stream_url(
     assert_eq!(buf, vec![1; buf.len()]);
     let metadata = metadata.read().unwrap();
     for i in 0..iters {
-        assert_eq!(metadata[i].stream_url().unwrap(), format!("stream-url{i}"));
+        assert_eq!(
+            metadata[i].clone().unwrap().stream_url().unwrap(),
+            format!("stream-url{i}")
+        );
     }
 }
 
@@ -122,13 +128,21 @@ fn all_stream_properties(
     let metadata = metadata.read().unwrap();
     assert_eq!(buf, vec![1; buf.len()]);
     for i in 0..iters {
-        assert_eq!(metadata[i].stream_url().unwrap(), format!("stream-url{i}"));
         assert_eq!(
-            metadata[i].track_title().unwrap(),
+            metadata[i].clone().unwrap().stream_url().unwrap(),
+            format!("stream-url{i}")
+        );
+        assert_eq!(
+            metadata[i].clone().unwrap().track_title().unwrap(),
             format!("stream-title{i}")
         );
         assert_eq!(
-            metadata[i].custom_fields().get("CustomVal").unwrap(),
+            metadata[i]
+                .clone()
+                .unwrap()
+                .custom_fields()
+                .get("CustomVal")
+                .unwrap(),
             &format!("custom{i}")
         );
     }
@@ -181,11 +195,11 @@ fn handle_unescaped_values(
 
     let metadata = metadata.read().unwrap();
     assert_eq!(buf, vec![1; buf.len()]);
-    assert_eq!(metadata[0].track_title(), expected_title);
-    assert_eq!(metadata[0].stream_url(), expected_url);
+    assert_eq!(metadata[0].clone().unwrap().track_title(), expected_title);
+    assert_eq!(metadata[0].clone().unwrap().stream_url(), expected_url);
 }
 
-type MetadataLock = Arc<RwLock<Vec<IcyMetadata>>>;
+type MetadataLock = Arc<RwLock<Vec<Result<IcyMetadata, MetadataParseError>>>>;
 
 fn setup_data<'a>(
     meta_bytes: &str,
@@ -240,7 +254,10 @@ fn read_larger_than_stream_size(
 
     let metadata = metadata.read().unwrap();
     for i in 0..iters {
-        assert_eq!(metadata[i].stream_url().unwrap(), format!("stream-url{i}"));
+        assert_eq!(
+            metadata[i].clone().unwrap().stream_url().unwrap(),
+            format!("stream-url{i}")
+        );
     }
 }
 
@@ -266,7 +283,10 @@ fn small_reads(
 
     let metadata = metadata.read().unwrap();
     for i in 0..iters {
-        assert_eq!(metadata[i].stream_url().unwrap(), format!("stream-url{i}"));
+        assert_eq!(
+            metadata[i].clone().unwrap().stream_url().unwrap(),
+            format!("stream-url{i}")
+        );
     }
 }
 
@@ -285,7 +305,14 @@ fn empty_metadata(
 
     assert_eq!(buf, vec![1; buf.len()]);
     let metadata = metadata.read().unwrap();
-    assert_eq!(metadata.len(), 0);
+    for i in 0..iters {
+        assert_eq!(
+            metadata[i],
+            Err(MetadataParseError::Empty(EmptyMetadataError(
+                "".to_string()
+            )))
+        )
+    }
 }
 
 #[rstest]
@@ -309,7 +336,10 @@ fn seek_from_start(
     {
         let metadata = metadata.read().unwrap();
         assert_eq!(1, metadata.len());
-        assert_eq!(metadata[0].stream_url().unwrap(), format!("stream-url0"));
+        assert_eq!(
+            metadata[0].clone().unwrap().stream_url().unwrap(),
+            format!("stream-url0")
+        );
     }
 
     reader.seek(SeekFrom::Start(0)).unwrap();
@@ -318,7 +348,10 @@ fn seek_from_start(
     {
         let metadata = metadata.read().unwrap();
         assert_eq!(2, metadata.len());
-        assert_eq!(metadata[1].stream_url().unwrap(), format!("stream-url0"));
+        assert_eq!(
+            metadata[1].clone().unwrap().stream_url().unwrap(),
+            format!("stream-url0")
+        );
     }
 
     let start = meta_int / 2;
@@ -328,7 +361,10 @@ fn seek_from_start(
     {
         let metadata = metadata.read().unwrap();
         assert_eq!(3, metadata.len());
-        assert_eq!(metadata[2].stream_url().unwrap(), format!("stream-url0"));
+        assert_eq!(
+            metadata[2].clone().unwrap().stream_url().unwrap(),
+            format!("stream-url0")
+        );
     }
 
     let new_pos = reader.seek(SeekFrom::Current(-(start as i64))).unwrap();
@@ -337,14 +373,20 @@ fn seek_from_start(
     {
         let metadata = metadata.read().unwrap();
         assert_eq!(4, metadata.len());
-        assert_eq!(metadata[3].stream_url().unwrap(), format!("stream-url0"));
+        assert_eq!(
+            metadata[3].clone().unwrap().stream_url().unwrap(),
+            format!("stream-url0")
+        );
     }
     let _ = reader.seek(SeekFrom::Current(-(start as i64))).unwrap();
     let _ = reader.seek(SeekFrom::Current(start as i64)).unwrap();
     {
         let metadata = metadata.read().unwrap();
         assert_eq!(5, metadata.len());
-        assert_eq!(metadata[4].stream_url().unwrap(), format!("stream-url0"));
+        assert_eq!(
+            metadata[4].clone().unwrap().stream_url().unwrap(),
+            format!("stream-url0")
+        );
     }
     let _ = reader.seek(SeekFrom::Start(0)).unwrap();
     let _ = reader.read(&mut buf[..meta_int + 1]);

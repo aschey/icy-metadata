@@ -1,7 +1,10 @@
 use std::collections::HashMap;
+use std::error::Error;
+use std::fmt::Display;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::num::NonZeroUsize;
 use std::str::FromStr;
+use std::string::FromUtf8Error;
 
 use http::{HeaderMap, HeaderValue};
 
@@ -204,13 +207,13 @@ pub struct IcyMetadataReader<T> {
     next_metadata: usize,
     last_metadata_size: usize,
     current_pos: u64,
-    on_metadata_read: Box<dyn Fn(IcyMetadata) + Send + Sync>,
+    on_metadata_read: Box<dyn Fn(Result<IcyMetadata, MetadataParseError>) + Send + Sync>,
 }
 
 impl<T> IcyMetadataReader<T> {
     pub fn new<F>(inner: T, icy_metaint: NonZeroUsize, on_metadata_read: F) -> Self
     where
-        F: Fn(IcyMetadata) + Send + Sync + 'static,
+        F: Fn(Result<IcyMetadata, MetadataParseError>) + Send + Sync + 'static,
     {
         Self {
             inner,
@@ -280,17 +283,36 @@ where
             let mut metadata_buf = vec![0u8; metadata_length];
             self.inner.read_exact(&mut metadata_buf)?;
 
-            if let Ok(metadata_str) = String::from_utf8(metadata_buf) {
-                // trim any null bytes at the end
-                let metadata_str = metadata_str.trim_end_matches(char::from(0));
-                if let Ok(metadata) = metadata_str.parse::<IcyMetadata>() {
-                    (self.on_metadata_read)(metadata);
-                }
-            }
+            let callback_val = String::from_utf8(metadata_buf)
+                .map_err(MetadataParseError::InvalidUtf8)
+                .and_then(|metadata_str| {
+                    let metadata_str = metadata_str.trim_end_matches(char::from(0));
+                    metadata_str
+                        .parse::<IcyMetadata>()
+                        .map_err(MetadataParseError::Empty)
+                });
+            (self.on_metadata_read)(callback_val);
         }
         Ok(())
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MetadataParseError {
+    InvalidUtf8(FromUtf8Error),
+    Empty(EmptyMetadataError),
+}
+
+impl Display for MetadataParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(
+            "Failed to parse icy metadata block as a string. The stream may not be properly \
+             encoded.",
+        )
+    }
+}
+
+impl Error for MetadataParseError {}
 
 impl<T> Read for IcyMetadataReader<T>
 where
@@ -371,8 +393,19 @@ impl IcyMetadata {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmptyMetadataError(pub String);
+
+impl Display for EmptyMetadataError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "No valid values found for metadata block {}", self.0)
+    }
+}
+
+impl Error for EmptyMetadataError {}
+
 impl FromStr for IcyMetadata {
-    type Err = ();
+    type Err = EmptyMetadataError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut metadata = Self {
@@ -387,7 +420,7 @@ impl FromStr for IcyMetadata {
             missing_quotes_found,
         } = parse_delimited_string(s);
         if map.is_empty() {
-            return Err(());
+            return Err(EmptyMetadataError(s.to_string()));
         }
 
         let mut fields_found = 0;

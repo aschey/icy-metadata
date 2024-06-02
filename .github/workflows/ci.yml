@@ -53,6 +53,7 @@ jobs:
           files: ./codecov.json
   release-build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust stable
@@ -60,6 +61,10 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@v2
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev
       - name: Build all
         run: cargo build --release --examples
 
