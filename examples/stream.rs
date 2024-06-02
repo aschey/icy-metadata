@@ -42,7 +42,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .await?;
     sink.append(rodio::Decoder::new(IcyMetadataReader::new(
         reader,
-        NonZeroUsize::new(icy_headers.meta_interval().unwrap()).unwrap(),
+        icy_headers.meta_interval(),
         |metadata| println!("{metadata:#?}\n"),
     ))?);
 

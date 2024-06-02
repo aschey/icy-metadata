@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 
 use http::{HeaderMap, HeaderValue};
 
@@ -14,7 +15,7 @@ pub struct IcyHeaders {
     public: Option<bool>,
     notice1: Option<String>,
     notice2: Option<String>,
-    meta_interval: Option<usize>,
+    meta_interval: Option<NonZeroUsize>,
     audio_info: Option<IcyAudioInfo>,
 }
 
@@ -71,7 +72,7 @@ impl IcyHeaders {
             }),
             meta_interval: headers
                 .get("icy-metaint")
-                .and_then(|val| val.to_str().ok()?.to_string().parse().ok()),
+                .and_then(|val| NonZeroUsize::new(val.to_str().ok()?.to_string().parse().ok()?)),
             audio_info: headers.get("ice-audio-info").and_then(|val| {
                 let ParseResult { map, .. } = parse_delimited_string(val.to_str().ok()?);
                 Some(IcyAudioInfo::parse_from_map(map))
@@ -111,7 +112,7 @@ impl IcyHeaders {
         self.public
     }
 
-    pub fn meta_interval(&self) -> Option<usize> {
+    pub fn meta_interval(&self) -> Option<NonZeroUsize> {
         self.meta_interval
     }
 

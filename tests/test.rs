@@ -32,7 +32,7 @@ fn read_headers() {
     assert_eq!(icy_headers.stream_name().unwrap(), "name");
     assert_eq!(icy_headers.station_url().unwrap(), "url");
     assert!(icy_headers.public().unwrap());
-    assert_eq!(icy_headers.meta_interval().unwrap(), 16000);
+    assert_eq!(icy_headers.meta_interval().unwrap().get(), 16000);
     assert_eq!(icy_headers.description().unwrap(), "description");
     assert_eq!(icy_headers.notice1().unwrap(), "notice1");
     assert_eq!(icy_headers.notice2().unwrap(), "notice2");
@@ -164,6 +164,11 @@ fn all_stream_properties(
     Some("stre;am=url")
 )]
 #[case(
+    "StreamUrl='stre;am=url';StreamTitle=';stre'am-;title;';",
+    Some(";stre'am-;title;"),
+    Some("stre;am=url")
+)]
+#[case(
     "StreamTitle='streamtitle';StreamUrl='stre;am=url';",
     Some("streamtitle"),
     Some("stre;am=url")
@@ -225,7 +230,7 @@ fn setup_data<'a>(
         let metadata = metadata.clone();
         IcyMetadataReader::new(
             Cursor::new(data.as_slice()),
-            NonZeroUsize::new(meta_int).unwrap(),
+            NonZeroUsize::new(meta_int),
             move |meta| {
                 metadata.write().unwrap().push(meta);
             },

@@ -8,7 +8,7 @@ use crate::parse::{parse_delimited_string, parse_value_if_valid, ParseResult};
 
 pub struct IcyMetadataReader<T> {
     inner: T,
-    icy_metaint: usize,
+    icy_metaint: Option<usize>,
     next_metadata: usize,
     last_metadata_size: usize,
     current_pos: u64,
@@ -16,15 +16,16 @@ pub struct IcyMetadataReader<T> {
 }
 
 impl<T> IcyMetadataReader<T> {
-    pub fn new<F>(inner: T, icy_metaint: NonZeroUsize, on_metadata_read: F) -> Self
+    pub fn new<F>(inner: T, icy_metaint: Option<NonZeroUsize>, on_metadata_read: F) -> Self
     where
         F: Fn(Result<IcyMetadata, MetadataParseError>) + Send + Sync + 'static,
     {
+        let icy_metaint = icy_metaint.map(|i| i.get());
         Self {
             inner,
-            icy_metaint: icy_metaint.get(),
+            icy_metaint,
             on_metadata_read: Box::new(on_metadata_read),
-            next_metadata: icy_metaint.get(),
+            next_metadata: icy_metaint.unwrap_or(0),
             last_metadata_size: 0,
             current_pos: 0,
         }
@@ -39,12 +40,12 @@ impl<T> IcyMetadataReader<T>
 where
     T: Read,
 {
-    fn parse_metadata_from_stream(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    fn parse_metadata_from_stream(&mut self, buf: &mut [u8], metaint: usize) -> io::Result<usize> {
         let to_fill = buf.len();
         let mut total_written = 0;
         while total_written < to_fill {
             let prev_written = total_written;
-            self.parse_next_metadata(buf, &mut total_written)?;
+            self.parse_next_metadata(buf, metaint, &mut total_written)?;
             // No additional data written, we're at the end of the stream
             if total_written == prev_written {
                 break;
@@ -54,7 +55,12 @@ where
         Ok(total_written)
     }
 
-    fn parse_next_metadata(&mut self, buf: &mut [u8], total_written: &mut usize) -> io::Result<()> {
+    fn parse_next_metadata(
+        &mut self,
+        buf: &mut [u8],
+        metaint: usize,
+        total_written: &mut usize,
+    ) -> io::Result<()> {
         let to_fill = buf.len();
 
         if self.next_metadata > 0 {
@@ -67,14 +73,14 @@ where
         }
 
         self.read_metadata()?;
-        self.next_metadata = self.icy_metaint;
+        self.next_metadata = metaint;
         let start = *total_written;
 
         // make sure we don't exceed the buffer length
         let end = (start + self.next_metadata).min(to_fill);
         let written = self.inner.read(&mut buf[start..end])?;
         *total_written += written;
-        self.next_metadata = self.icy_metaint - written;
+        self.next_metadata = metaint - written;
         Ok(())
     }
 
@@ -107,8 +113,12 @@ where
     T: Read,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let Some(metaint) = self.icy_metaint else {
+            return self.inner.read(buf);
+        };
+
         if buf.len() > self.next_metadata {
-            self.parse_metadata_from_stream(buf)
+            self.parse_metadata_from_stream(buf, metaint)
         } else {
             let read = self.inner.read(buf)?;
             self.next_metadata -= read;
@@ -123,6 +133,10 @@ where
     T: Read + Seek,
 {
     fn seek(&mut self, seek_from: io::SeekFrom) -> io::Result<u64> {
+        let Some(metaint) = self.icy_metaint else {
+            return self.inner.seek(seek_from);
+        };
+
         let (requested_change, requested_pos) = match seek_from {
             SeekFrom::Start(pos) => (pos as i64 - self.current_pos as i64, pos as i64),
             SeekFrom::Current(pos) => (pos, self.current_pos as i64 + pos),
@@ -137,7 +151,7 @@ where
         let current_absolute_pos = self.inner.stream_position()? as i64;
         let mut seek_progress = 0i64;
         if requested_change < 0 {
-            let last_metadata_pos = (self.icy_metaint - self.next_metadata) as i64;
+            let last_metadata_pos = (metaint - self.next_metadata) as i64;
             let last_metadata_end = current_absolute_pos - last_metadata_pos;
 
             if current_absolute_pos + requested_change < last_metadata_end {
@@ -154,7 +168,7 @@ where
         }
         self.inner
             .seek(SeekFrom::Current(requested_change - seek_progress))?;
-        self.next_metadata = self.icy_metaint - ((requested_pos as usize) % self.icy_metaint);
+        self.next_metadata = metaint - ((requested_pos as usize) % metaint);
         self.current_pos = requested_pos as u64;
         Ok(self.current_pos)
     }
