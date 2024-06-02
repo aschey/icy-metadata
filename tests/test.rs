@@ -3,10 +3,8 @@ use std::num::NonZeroUsize;
 use std::sync::{Arc, RwLock};
 
 use http::HeaderMap;
-use icy_metadata::{
-    EmptyMetadataError, IcyHeaders, IcyMetadata, IcyMetadataReader, MetadataParseError,
-    RequestIcyMetadata,
-};
+use icy_metadata::error::{EmptyMetadataError, MetadataParseError};
+use icy_metadata::{IcyHeaders, IcyMetadata, IcyMetadataReader, RequestIcyMetadata};
 use rstest::rstest;
 
 #[test]
