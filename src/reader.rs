@@ -248,17 +248,10 @@ impl FromStr for IcyMetadata {
 }
 
 fn handle_unescaped_values(s: &str, metadata: &mut IcyMetadata) {
-    let stream_title_index = s
-        .find("StreamTitle=")
-        .or_else(|| s.find("streamTitle="))
-        .or_else(|| s.find("Streamtitle="))
-        .or_else(|| s.find("streamtitle="));
+    let lower_string = s.to_ascii_lowercase();
+    let stream_title_index = lower_string.find("streamtitle=");
 
-    let stream_url_index = s
-        .find("StreamUrl=")
-        .or_else(|| s.find("streamUrl="))
-        .or_else(|| s.find("Streamurl="))
-        .or_else(|| s.find("streamurl="));
+    let stream_url_index = lower_string.find("streamurl=");
     let (stream_title, stream_url) = match (stream_title_index, stream_url_index) {
         (Some(stream_title_index), Some(stream_url_index)) => {
             let (stream_title, stream_url) = if stream_title_index < stream_url_index {
