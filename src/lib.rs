@@ -1,9 +1,7 @@
-use std::{
-    collections::HashMap,
-    io::{self, Read, Seek, SeekFrom},
-    num::NonZeroUsize,
-    str::FromStr,
-};
+use std::collections::HashMap;
+use std::io::{self, Read, Seek, SeekFrom};
+use std::num::NonZeroUsize;
+use std::str::FromStr;
 
 use http::{HeaderMap, HeaderValue};
 
@@ -68,7 +66,8 @@ impl IcyHeaders {
             )
             .and_then(|val| Some(val.to_str().ok()?.to_string()))
             .map(|public| {
-                // 1 and 0 are the only supported values, but we'll look for "true" as well because... why not
+                // 1 and 0 are the only supported values, but we'll look for "true" as well
+                // because... why not
                 public == "1" || public.to_ascii_lowercase() == "true"
             }),
             meta_interval: headers
@@ -321,7 +320,7 @@ where
                 return Err(io::Error::new(
                     io::ErrorKind::Unsupported,
                     "seek from end not supported",
-                ))
+                ));
             }
         };
 
@@ -408,9 +407,10 @@ impl FromStr for IcyMetadata {
                 }
             }
         }
-        // Escaping characters like quotes, semicolons, and equal signs within the metadata string doesn't seem to be well-defined
-        // Here we try to handle the scenario where a stray semicolon in one of the values messes with the parsing
-        // by relying on the fact that StreamTitle and StreamUrl should be the only valid keys
+        // Escaping characters like quotes, semicolons, and equal signs within the metadata string
+        // doesn't seem to be well-defined Here we try to handle the scenario where a stray
+        // semicolon in one of the values messes with the parsing by relying on the fact
+        // that StreamTitle and StreamUrl should be the only valid keys
         if errors_found || stray_values_found {
             let semicolon_count = s.chars().filter(|c| *c == ';').count();
             if semicolon_count > fields_found || missing_quotes_found {

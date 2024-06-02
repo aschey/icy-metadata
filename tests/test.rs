@@ -1,8 +1,6 @@
-use std::{
-    io::{Cursor, Read, SeekFrom},
-    num::NonZeroUsize,
-    sync::{Arc, RwLock},
-};
+use std::io::{Cursor, Read, SeekFrom};
+use std::num::NonZeroUsize;
+use std::sync::{Arc, RwLock};
 
 use http::HeaderMap;
 use icy_metadata::{IcyHeaders, IcyMetadata, IcyMetadataReader, RequestIcyMetadata};
