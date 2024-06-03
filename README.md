@@ -97,6 +97,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
+### Seeking within the stream
+
+Seeking is supported with a few limitations. See the docs for [`IcyMetadataReader`](https://docs.rs/icy_metadata/latest/icy_metadata/struct.IcyMetadataReader.html) for details.
+
 ## Supported Rust Versions
 
 The MSRV is currently `1.65.0`.
