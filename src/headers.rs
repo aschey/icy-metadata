@@ -16,7 +16,7 @@ pub struct IcyHeaders {
     public: Option<bool>,
     notice1: Option<String>,
     notice2: Option<String>,
-    meta_interval: Option<NonZeroUsize>,
+    metadata_interval: Option<NonZeroUsize>,
     audio_info: Option<IcyAudioInfo>,
 }
 
@@ -71,7 +71,7 @@ impl IcyHeaders {
                 // because... why not
                 public == "1" || public.to_ascii_lowercase() == "true"
             }),
-            meta_interval: headers
+            metadata_interval: headers
                 .get("icy-metaint")
                 .and_then(|val| NonZeroUsize::new(val.to_str().ok()?.to_string().parse().ok()?)),
             audio_info: headers.get("ice-audio-info").and_then(|val| {
@@ -113,8 +113,8 @@ impl IcyHeaders {
         self.public
     }
 
-    pub fn meta_interval(&self) -> Option<NonZeroUsize> {
-        self.meta_interval
+    pub fn metadata_interval(&self) -> Option<NonZeroUsize> {
+        self.metadata_interval
     }
 
     pub fn audio_info(&self) -> Option<&IcyAudioInfo> {

@@ -10,6 +10,7 @@ urlencoding = "2"
 serde = { version = "1.0.134", features = ["derive"], optional = true }
 
 [dev-dependencies]
+reqwest = "0.12.4"
 rodio = { version = "0.18.1", default-features = false, features = [
     "symphonia-all",
 ] }

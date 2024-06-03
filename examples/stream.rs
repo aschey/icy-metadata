@@ -44,9 +44,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .await?;
     sink.append(rodio::Decoder::new(IcyMetadataReader::new(
         reader,
-        // Since we requested icy metadata, the metaint header should be present in the response
-        // which will allow us to parse the metadata within the stream
-        icy_headers.meta_interval(),
+        // Since we requested icy metadata, the metadata interval header should be present in the
+        // response. This will allow us to parse the metadata within the stream
+        icy_headers.metadata_interval(),
+        // Print the stream metadata whenever we receive new values
         |metadata| println!("{metadata:#?}\n"),
     ))?);
 

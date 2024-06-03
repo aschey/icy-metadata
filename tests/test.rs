@@ -32,7 +32,7 @@ fn read_headers() {
     assert_eq!(icy_headers.stream_name().unwrap(), "name");
     assert_eq!(icy_headers.station_url().unwrap(), "url");
     assert!(icy_headers.public().unwrap());
-    assert_eq!(icy_headers.meta_interval().unwrap().get(), 16000);
+    assert_eq!(icy_headers.metadata_interval().unwrap().get(), 16000);
     assert_eq!(icy_headers.description().unwrap(), "description");
     assert_eq!(icy_headers.notice1().unwrap(), "notice1");
     assert_eq!(icy_headers.notice2().unwrap(), "notice2");
