@@ -10,6 +10,15 @@ use crate::error::{EmptyMetadataError, MetadataParseError};
 use crate::parse::{parse_delimited_string, parse_value_if_valid, ParseResult};
 
 /// Reads icy metadata contained within a stream.
+///
+/// Seeking within the stream is supported with the following limitations:
+///
+/// - [`SeekFrom::End`](std::io::SeekFrom::End) is not supported since seeking from the end of a
+///   stream conceptually doesn't make sense.
+/// - Seeking backwards is limited by the size of the metadata cache. Since the metadata values have
+///   dynamic sizes, we need to know the size of the previous metadata value to seek past it. In
+///   order to prevent unbounded memory growth, we cap the number of previous metadata sizes we keep
+///   track of. You can change this limit using [`Self::metadata_size_cache`].
 pub struct IcyMetadataReader<T> {
     inner: T,
     icy_metadata_interval: Option<usize>,
