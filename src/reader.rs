@@ -74,7 +74,7 @@ where
             *total_written += written;
         }
 
-        self.read_metadata()?;
+        self.read_metadata(ReadMode::TriggerCallback)?;
         self.next_metadata = metaint;
         let start = *total_written;
 
@@ -99,26 +99,34 @@ where
         Ok(())
     }
 
-    fn read_metadata(&mut self) -> io::Result<()> {
+    fn read_metadata(&mut self, read_mode: ReadMode) -> io::Result<()> {
         self.update_metadata_size()?;
         if let Some(last_size) = self.metadata_sizes.back() {
             if *last_size > 0 {
                 let mut metadata_buf = vec![0u8; *last_size];
                 self.inner.read_exact(&mut metadata_buf)?;
 
-                let callback_val = String::from_utf8(metadata_buf)
-                    .map_err(MetadataParseError::InvalidUtf8)
-                    .and_then(|metadata_str| {
-                        let metadata_str = metadata_str.trim_end_matches(char::from(0));
-                        metadata_str
-                            .parse::<IcyMetadata>()
-                            .map_err(MetadataParseError::Empty)
-                    });
-                (self.on_metadata_read)(callback_val);
+                if read_mode == ReadMode::TriggerCallback {
+                    let callback_val = String::from_utf8(metadata_buf)
+                        .map_err(MetadataParseError::InvalidUtf8)
+                        .and_then(|metadata_str| {
+                            let metadata_str = metadata_str.trim_end_matches(char::from(0));
+                            metadata_str
+                                .parse::<IcyMetadata>()
+                                .map_err(MetadataParseError::Empty)
+                        });
+                    (self.on_metadata_read)(callback_val);
+                }
             }
         }
         Ok(())
     }
+}
+
+#[derive(PartialEq, Eq)]
+enum ReadMode {
+    TriggerCallback,
+    IgnoreCallback,
 }
 
 impl<T> Read for IcyMetadataReader<T>
@@ -186,11 +194,13 @@ where
                 last_metadata_offset = metaint as i64;
                 last_metadata_end_pos -= metadata_region_size + metaint as i64;
             }
-        } else if requested_change >= self.next_metadata as i64 {
-            self.inner
-                .seek(SeekFrom::Current(self.next_metadata as i64))?;
-            seek_progress += self.next_metadata as i64;
-            self.read_metadata()?;
+        } else {
+            while requested_change - seek_progress >= self.next_metadata as i64 {
+                self.inner
+                    .seek(SeekFrom::Current(self.next_metadata as i64))?;
+                seek_progress += self.next_metadata as i64;
+                self.read_metadata(ReadMode::IgnoreCallback)?;
+            }
         }
         self.inner
             .seek(SeekFrom::Current(requested_change - seek_progress))?;

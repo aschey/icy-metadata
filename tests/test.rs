@@ -291,109 +291,94 @@ fn empty_metadata(
 }
 
 #[rstest]
+#[case(
+    vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';","StreamUrl='stream-url123';"], 
+    vec!["stream-url0", "stream-urlabc1235678", "stream-url123","stream-url0", "stream-urlabc1235678", "stream-url123"],
+    0
+)]
+#[case(
+    vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';","StreamUrl='stream-url123';"], 
+    vec!["stream-url0", "stream-urlabc1235678", "stream-url123", "stream-urlabc1235678", "stream-url123"],
+    10
+)]
+#[case(
+    vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';","StreamUrl='stream-url123';"], 
+    vec!["stream-url0", "stream-urlabc1235678", "stream-url123","stream-url0", "stream-urlabc1235678", "stream-url123"],
+    5
+)]
+#[case(
+    vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';","StreamUrl='stream-url123';"], 
+    vec!["stream-url0", "stream-urlabc1235678", "stream-url123","stream-urlabc1235678", "stream-url123"],
+    15
+)]
 fn seek_from_start(
-    #[values(vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';"])] metadata: Vec<
-        &str,
-    >,
+    #[case] metadata_in: Vec<&str>,
+    #[case] metadata_out: Vec<&str>,
     #[values((10,5))] byte_lens: (usize, usize),
+    #[case] seek_pos: usize,
 ) {
-    let meta_length = metadata.len();
+    let meta_length = metadata_in.len();
     let (meta_int, trailing_bytes) = byte_lens;
     let mut data = Vec::new();
-    let (mut reader, metadata) = setup_data_list(metadata, meta_int, &mut data, trailing_bytes);
+    let (mut reader, metadata) = setup_data_list(metadata_in, meta_int, &mut data, trailing_bytes);
 
     let buf_len = meta_int * meta_length + trailing_bytes;
     let mut buf = vec![0; buf_len];
 
-    let _ = reader.read(&mut buf[..meta_int + 1]).unwrap();
-    assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
+    let _ = reader.read(&mut buf).unwrap();
+    reader.seek(SeekFrom::Start(seek_pos as u64)).unwrap();
+    let _ = reader.read(&mut buf[seek_pos..buf_len]).unwrap();
+    assert_eq!(buf, vec![1; buf_len]);
 
-    {
-        let metadata = metadata.read().unwrap();
-        assert_eq!(1, metadata.len());
-        assert_eq!(
-            metadata[0].clone().unwrap().stream_url().unwrap(),
-            format!("stream-url0")
-        );
+    let metadata = metadata.read().unwrap();
+    for (i, out) in metadata_out.iter().enumerate() {
+        assert_eq!(metadata[i].clone().unwrap().stream_url().unwrap(), *out)
     }
+}
 
-    reader.seek(SeekFrom::Start(0)).unwrap();
-    let _ = reader.read(&mut buf[..meta_int + 1]).unwrap();
-    assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
-    {
-        let metadata = metadata.read().unwrap();
-        assert_eq!(2, metadata.len());
-        assert_eq!(
-            metadata[1].clone().unwrap().stream_url().unwrap(),
-            format!("stream-url0")
-        );
+#[rstest]
+#[case(
+    vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';","StreamUrl='stream-url123';"], 
+    vec!["stream-url123"],
+    20
+)]
+#[case(
+    vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';","StreamUrl='stream-url123';"], 
+    vec!["stream-url0","stream-urlabc1235678","stream-url123"],
+    5
+)]
+#[case(
+    vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';","StreamUrl='stream-url123';"], 
+    vec!["stream-urlabc1235678","stream-url123"],
+    10
+)]
+#[case(
+    vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';","StreamUrl='stream-url123';"], 
+    vec!["stream-urlabc1235678","stream-url123"],
+    15
+)]
+fn seek_from_start_to_future(
+    #[case] metadata_in: Vec<&str>,
+    #[case] metadata_out: Vec<&str>,
+    #[values((10,5))] byte_lens: (usize, usize),
+    #[case] seek_pos: usize,
+) {
+    let meta_length = metadata_in.len();
+    let (meta_int, trailing_bytes) = byte_lens;
+    let mut data = Vec::new();
+    let (mut reader, metadata) = setup_data_list(metadata_in, meta_int, &mut data, trailing_bytes);
+
+    let buf_len = meta_int * meta_length + trailing_bytes;
+    let mut buf = vec![0; buf_len];
+
+    reader.seek(SeekFrom::Start(seek_pos as u64)).unwrap();
+    let _ = reader.read(&mut buf[seek_pos..]).unwrap();
+    assert_eq!(buf[seek_pos..], vec![1; buf_len - seek_pos]);
+
+    let metadata = metadata.read().unwrap();
+    for (i, out) in metadata_out.iter().enumerate() {
+        assert_eq!(metadata[i].clone().unwrap().stream_url().unwrap(), *out)
     }
-
-    let start = meta_int / 2;
-    reader.seek(SeekFrom::Start(start as u64)).unwrap();
-    let _ = reader.read(&mut buf[start..meta_int + 1]).unwrap();
-    assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
-    {
-        let metadata = metadata.read().unwrap();
-        assert_eq!(3, metadata.len());
-        assert_eq!(
-            metadata[2].clone().unwrap().stream_url().unwrap(),
-            format!("stream-url0")
-        );
-    }
-
-    let new_pos = reader.seek(SeekFrom::Current(-(start as i64))).unwrap();
-    let _ = reader
-        .read(&mut buf[new_pos as usize..meta_int + 1])
-        .unwrap();
-    assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
-    {
-        let metadata = metadata.read().unwrap();
-        assert_eq!(4, metadata.len());
-        assert_eq!(
-            metadata[3].clone().unwrap().stream_url().unwrap(),
-            format!("stream-url0")
-        );
-    }
-    let _ = reader.seek(SeekFrom::Current(-(start as i64))).unwrap();
-    let _ = reader.seek(SeekFrom::Current(start as i64)).unwrap();
-    {
-        let metadata = metadata.read().unwrap();
-        assert_eq!(5, metadata.len());
-        assert_eq!(
-            metadata[4].clone().unwrap().stream_url().unwrap(),
-            format!("stream-url0")
-        );
-    }
-    let _ = reader.seek(SeekFrom::Start(0)).unwrap();
-    let _ = reader.read(&mut buf[..meta_int + 1]).unwrap();
-    assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
-
-    buf.clear();
-    let _ = reader.read_to_end(&mut buf).unwrap();
-    assert_eq!(buf, vec![1; buf_len - (meta_int + 1)]);
-
-    let _ = reader.seek(SeekFrom::Start(0)).unwrap();
-    let _ = reader.read(&mut buf[..meta_int + 1]).unwrap();
-    assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
-
-    // reader.seek(SeekFrom::Start(0)).unwrap();
-    // let _ = reader.read(&mut buf);
-    // assert_eq!(buf[..meta_int], vec![1; meta_int]);
-
-    // let new_pos = meta_int / 2;
-    // reader.seek(SeekFrom::Start(new_pos as u64)).unwrap();
-    // let _ = reader.read(&mut buf[new_pos..]);
-    // assert_eq!(buf, vec![1; buf.len()]);
-
-    // reader.seek(SeekFrom::Current(-(new_pos as i64))).unwrap();
-    // let _ = reader.read(&mut buf[new_pos..]);
-    // assert_eq!(buf, vec![1; buf.len()]);
-
-    // let metadata = metadata.read().unwrap();
-    // for i in 0..iters {
-    //     assert_eq!(metadata[i].stream_url().unwrap(), format!("stream-url{i}"));
-    // }
 }
 
 enum MetadataSetup<'a> {
