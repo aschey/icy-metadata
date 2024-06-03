@@ -3,6 +3,8 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 
+use tracing::warn;
+
 use crate::error::{EmptyMetadataError, MetadataParseError};
 use crate::parse::{parse_delimited_string, parse_value_if_valid, ParseResult};
 
@@ -275,6 +277,10 @@ impl FromStr for IcyMetadata {
         if errors_found || stray_values_found {
             let semicolon_count = s.chars().filter(|c| *c == ';').count();
             if semicolon_count > fields_found || missing_quotes_found {
+                warn!(
+                    metadata_string = s,
+                    "found possibly malformed metadata, attempting to resolve any unescaped fields",
+                );
                 handle_unescaped_values(s, &mut metadata);
             }
         }
