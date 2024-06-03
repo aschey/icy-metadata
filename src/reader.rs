@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::num::NonZeroUsize;
 use std::str::FromStr;
@@ -10,8 +10,9 @@ pub struct IcyMetadataReader<T> {
     inner: T,
     icy_metaint: Option<usize>,
     next_metadata: usize,
-    last_metadata_size: usize,
+    metadata_sizes: VecDeque<usize>,
     current_pos: u64,
+    max_metadata_cache: usize,
     on_metadata_read: Box<dyn Fn(Result<IcyMetadata, MetadataParseError>) + Send + Sync>,
 }
 
@@ -26,7 +27,8 @@ impl<T> IcyMetadataReader<T> {
             icy_metaint,
             on_metadata_read: Box::new(on_metadata_read),
             next_metadata: icy_metaint.unwrap_or(0),
-            last_metadata_size: 0,
+            metadata_sizes: VecDeque::new(),
+            max_metadata_cache: 1000,
             current_pos: 0,
         }
     }
@@ -90,25 +92,30 @@ where
 
         let metadata_length = metadata_length_buf[0] as usize * ICY_METADATA_MULTIPLIER;
 
-        self.last_metadata_size = metadata_length;
+        self.metadata_sizes.push_back(metadata_length);
+        if self.metadata_sizes.len() > self.max_metadata_cache {
+            self.metadata_sizes.pop_front();
+        }
         Ok(())
     }
 
     fn read_metadata(&mut self) -> io::Result<()> {
         self.update_metadata_size()?;
-        if self.last_metadata_size > 0 {
-            let mut metadata_buf = vec![0u8; self.last_metadata_size];
-            self.inner.read_exact(&mut metadata_buf)?;
+        if let Some(last_size) = self.metadata_sizes.back() {
+            if *last_size > 0 {
+                let mut metadata_buf = vec![0u8; *last_size];
+                self.inner.read_exact(&mut metadata_buf)?;
 
-            let callback_val = String::from_utf8(metadata_buf)
-                .map_err(MetadataParseError::InvalidUtf8)
-                .and_then(|metadata_str| {
-                    let metadata_str = metadata_str.trim_end_matches(char::from(0));
-                    metadata_str
-                        .parse::<IcyMetadata>()
-                        .map_err(MetadataParseError::Empty)
-                });
-            (self.on_metadata_read)(callback_val);
+                let callback_val = String::from_utf8(metadata_buf)
+                    .map_err(MetadataParseError::InvalidUtf8)
+                    .and_then(|metadata_str| {
+                        let metadata_str = metadata_str.trim_end_matches(char::from(0));
+                        metadata_str
+                            .parse::<IcyMetadata>()
+                            .map_err(MetadataParseError::Empty)
+                    });
+                (self.on_metadata_read)(callback_val);
+            }
         }
         Ok(())
     }
@@ -164,13 +171,18 @@ where
             while current_absolute_pos + requested_change - seek_progress < last_metadata_end_pos
                 && last_metadata_end_pos > 0
             {
+                let Some(last_metadata_size) = self.metadata_sizes.pop_back() else {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "attempting to seek beyond metadata length cache",
+                    ));
+                };
                 // +1 for the byte that holds the metadata length
-                let metadata_region_size = self.last_metadata_size as i64 + 1;
+                let metadata_region_size = last_metadata_size as i64 + 1;
                 let seek_to = (last_metadata_end_pos - metadata_region_size) as u64;
-                self.inner.seek(SeekFrom::Start(seek_to))?;
+                current_absolute_pos = self.inner.seek(SeekFrom::Start(seek_to))? as i64;
                 seek_progress -= last_metadata_offset;
-                self.update_metadata_size()?;
-                current_absolute_pos = self.inner.seek(SeekFrom::Current(-1))? as i64;
+
                 last_metadata_offset = metaint as i64;
                 last_metadata_end_pos -= metadata_region_size + metaint as i64;
             }

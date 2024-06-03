@@ -1,4 +1,4 @@
-use std::io::{Cursor, Read, SeekFrom};
+use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::num::NonZeroUsize;
 use std::sync::{Arc, RwLock};
 
@@ -67,7 +67,8 @@ fn read_stream_title(
 ) {
     let (meta_int, trailing_bytes) = byte_lens;
     let mut data = Vec::new();
-    let (mut reader, metadata) = setup_data(meta_bytes, meta_int, &mut data, iters, trailing_bytes);
+    let (mut reader, metadata) =
+        setup_data_template(meta_bytes, meta_int, &mut data, iters, trailing_bytes);
 
     let mut buf = Vec::with_capacity(meta_int * iters + trailing_bytes);
     reader.read_to_end(&mut buf).unwrap();
@@ -90,7 +91,8 @@ fn read_stream_url(
 ) {
     let (meta_int, trailing_bytes) = byte_lens;
     let mut data = Vec::new();
-    let (mut reader, metadata) = setup_data(meta_bytes, meta_int, &mut data, iters, trailing_bytes);
+    let (mut reader, metadata) =
+        setup_data_template(meta_bytes, meta_int, &mut data, iters, trailing_bytes);
 
     let mut buf = Vec::with_capacity(meta_int * iters + trailing_bytes);
     reader.read_to_end(&mut buf).unwrap();
@@ -118,7 +120,8 @@ fn all_stream_properties(
 ) {
     let (meta_int, trailing_bytes) = byte_lens;
     let mut data = Vec::new();
-    let (mut reader, metadata) = setup_data(meta_bytes, meta_int, &mut data, iters, trailing_bytes);
+    let (mut reader, metadata) =
+        setup_data_template(meta_bytes, meta_int, &mut data, iters, trailing_bytes);
 
     let mut buf = Vec::with_capacity(meta_int * iters + trailing_bytes);
     reader.read_to_end(&mut buf).unwrap();
@@ -191,7 +194,8 @@ fn handle_unescaped_values(
     let meta_int = 5;
     let trailing_bytes = 4;
     let mut data = Vec::new();
-    let (mut reader, metadata) = setup_data(meta_bytes, meta_int, &mut data, 1, trailing_bytes);
+    let (mut reader, metadata) =
+        setup_data_template(meta_bytes, meta_int, &mut data, 1, trailing_bytes);
 
     let mut buf = Vec::with_capacity(meta_int + trailing_bytes);
     reader.read_to_end(&mut buf).unwrap();
@@ -204,41 +208,6 @@ fn handle_unescaped_values(
 
 type MetadataLock = Arc<RwLock<Vec<Result<IcyMetadata, MetadataParseError>>>>;
 
-fn setup_data<'a>(
-    meta_bytes: &str,
-    meta_int: usize,
-    data: &'a mut Vec<u8>,
-    iters: usize,
-    trailing_bytes: usize,
-) -> (IcyMetadataReader<Cursor<&'a [u8]>>, MetadataLock) {
-    for i in 0..iters {
-        let meta_bytes = meta_bytes.replace("{}", &i.to_string());
-        let meta_bytes = meta_bytes.as_bytes();
-        let meta_byte = meta_bytes.len() / 16 + 1;
-
-        data.extend_from_slice(vec![1; meta_int].as_slice());
-        data.push(meta_byte as u8);
-        data.extend_from_slice(meta_bytes);
-        let padding = vec![0; meta_byte * 16 - meta_bytes.len()];
-
-        data.extend_from_slice(&padding);
-    }
-    data.extend_from_slice(&vec![1; trailing_bytes]);
-
-    let metadata = Arc::new(RwLock::new(vec![]));
-    let reader = {
-        let metadata = metadata.clone();
-        IcyMetadataReader::new(
-            Cursor::new(data.as_slice()),
-            NonZeroUsize::new(meta_int),
-            move |meta| {
-                metadata.write().unwrap().push(meta);
-            },
-        )
-    };
-    (reader, metadata)
-}
-
 #[rstest]
 fn read_larger_than_stream_size(
     #[values("StreamUrl='stream-url{}';")] meta_bytes: &str,
@@ -247,7 +216,8 @@ fn read_larger_than_stream_size(
 ) {
     let (meta_int, trailing_bytes) = byte_lens;
     let mut data = Vec::new();
-    let (mut reader, metadata) = setup_data(meta_bytes, meta_int, &mut data, iters, trailing_bytes);
+    let (mut reader, metadata) =
+        setup_data_template(meta_bytes, meta_int, &mut data, iters, trailing_bytes);
 
     let stream_size = meta_int * iters + trailing_bytes;
     let mut buf = vec![0; stream_size + 1];
@@ -272,7 +242,8 @@ fn small_reads(
 ) {
     let (meta_int, trailing_bytes) = byte_lens;
     let mut data = Vec::new();
-    let (mut reader, metadata) = setup_data(meta_bytes, meta_int, &mut data, iters, trailing_bytes);
+    let (mut reader, metadata) =
+        setup_data_template(meta_bytes, meta_int, &mut data, iters, trailing_bytes);
 
     let stream_size = meta_int * iters + trailing_bytes;
     let mut buf = vec![0; stream_size];
@@ -301,7 +272,8 @@ fn empty_metadata(
 ) {
     let (meta_int, trailing_bytes) = byte_lens;
     let mut data = Vec::new();
-    let (mut reader, metadata) = setup_data(meta_bytes, meta_int, &mut data, iters, trailing_bytes);
+    let (mut reader, metadata) =
+        setup_data_template(meta_bytes, meta_int, &mut data, iters, trailing_bytes);
 
     let mut buf = Vec::with_capacity(meta_int * iters + trailing_bytes);
     reader.read_to_end(&mut buf).unwrap();
@@ -320,20 +292,20 @@ fn empty_metadata(
 
 #[rstest]
 fn seek_from_start(
-    #[values("StreamUrl='stream-url{}';")] meta_bytes: &str,
+    #[values(vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';"])] metadata: Vec<
+        &str,
+    >,
     #[values((10,5))] byte_lens: (usize, usize),
-    #[values(2)] iters: usize,
 ) {
-    use std::io::Seek;
-
+    let meta_length = metadata.len();
     let (meta_int, trailing_bytes) = byte_lens;
     let mut data = Vec::new();
-    let (mut reader, metadata) = setup_data(meta_bytes, meta_int, &mut data, iters, trailing_bytes);
+    let (mut reader, metadata) = setup_data_list(metadata, meta_int, &mut data, trailing_bytes);
 
-    let buf_len = meta_int * iters + trailing_bytes;
+    let buf_len = meta_int * meta_length + trailing_bytes;
     let mut buf = vec![0; buf_len];
 
-    let _ = reader.read(&mut buf[..meta_int + 1]);
+    let _ = reader.read(&mut buf[..meta_int + 1]).unwrap();
     assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
 
     {
@@ -346,7 +318,7 @@ fn seek_from_start(
     }
 
     reader.seek(SeekFrom::Start(0)).unwrap();
-    let _ = reader.read(&mut buf[..meta_int + 1]);
+    let _ = reader.read(&mut buf[..meta_int + 1]).unwrap();
     assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
     {
         let metadata = metadata.read().unwrap();
@@ -359,7 +331,7 @@ fn seek_from_start(
 
     let start = meta_int / 2;
     reader.seek(SeekFrom::Start(start as u64)).unwrap();
-    let _ = reader.read(&mut buf[start..meta_int + 1]);
+    let _ = reader.read(&mut buf[start..meta_int + 1]).unwrap();
     assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
     {
         let metadata = metadata.read().unwrap();
@@ -371,7 +343,9 @@ fn seek_from_start(
     }
 
     let new_pos = reader.seek(SeekFrom::Current(-(start as i64))).unwrap();
-    let _ = reader.read(&mut buf[new_pos as usize..meta_int + 1]);
+    let _ = reader
+        .read(&mut buf[new_pos as usize..meta_int + 1])
+        .unwrap();
     assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
     {
         let metadata = metadata.read().unwrap();
@@ -392,15 +366,15 @@ fn seek_from_start(
         );
     }
     let _ = reader.seek(SeekFrom::Start(0)).unwrap();
-    let _ = reader.read(&mut buf[..meta_int + 1]);
+    let _ = reader.read(&mut buf[..meta_int + 1]).unwrap();
     assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
 
     buf.clear();
-    let _ = reader.read_to_end(&mut buf);
+    let _ = reader.read_to_end(&mut buf).unwrap();
     assert_eq!(buf, vec![1; buf_len - (meta_int + 1)]);
 
-    let _ = reader.seek(SeekFrom::Start(0));
-    let _ = reader.read(&mut buf[..meta_int + 1]);
+    let _ = reader.seek(SeekFrom::Start(0)).unwrap();
+    let _ = reader.read(&mut buf[..meta_int + 1]).unwrap();
     assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
 
     // reader.seek(SeekFrom::Start(0)).unwrap();
@@ -420,4 +394,80 @@ fn seek_from_start(
     // for i in 0..iters {
     //     assert_eq!(metadata[i].stream_url().unwrap(), format!("stream-url{i}"));
     // }
+}
+
+enum MetadataSetup<'a> {
+    Template { val: &'a str, iters: usize },
+    List(Vec<&'a str>),
+}
+
+fn setup_data_template<'a>(
+    val: &'a str,
+    meta_int: usize,
+    data: &'a mut Vec<u8>,
+    iters: usize,
+    trailing_bytes: usize,
+) -> (IcyMetadataReader<Cursor<&'a [u8]>>, MetadataLock) {
+    setup_data(
+        MetadataSetup::Template { val, iters },
+        meta_int,
+        data,
+        trailing_bytes,
+    )
+}
+
+fn setup_data_list<'a>(
+    vals: Vec<&'a str>,
+    meta_int: usize,
+    data: &'a mut Vec<u8>,
+    trailing_bytes: usize,
+) -> (IcyMetadataReader<Cursor<&'a [u8]>>, MetadataLock) {
+    setup_data(MetadataSetup::List(vals), meta_int, data, trailing_bytes)
+}
+
+fn setup_data<'a>(
+    metadata_setup: MetadataSetup<'a>,
+    meta_int: usize,
+    data: &'a mut Vec<u8>,
+    trailing_bytes: usize,
+) -> (IcyMetadataReader<Cursor<&'a [u8]>>, MetadataLock) {
+    let mut add_data = |meta_bytes: &str| {
+        let meta_bytes = meta_bytes.as_bytes();
+        let meta_byte = meta_bytes.len() / 16 + 1;
+
+        data.extend_from_slice(vec![1; meta_int].as_slice());
+        data.push(meta_byte as u8);
+        data.extend_from_slice(meta_bytes);
+        let padding = vec![0; meta_byte * 16 - meta_bytes.len()];
+
+        data.extend_from_slice(&padding);
+    };
+    match metadata_setup {
+        MetadataSetup::Template { val, iters } => {
+            for i in 0..iters {
+                let meta_bytes = val.replace("{}", &i.to_string());
+                add_data(&meta_bytes);
+            }
+        }
+        MetadataSetup::List(vals) => {
+            for val in vals {
+                add_data(val);
+            }
+        }
+    }
+
+    data.extend_from_slice(&vec![1; trailing_bytes]);
+
+    let metadata = Arc::new(RwLock::new(vec![]));
+    let reader = {
+        let metadata = metadata.clone();
+        IcyMetadataReader::new(
+            Cursor::new(data.as_slice()),
+            NonZeroUsize::new(meta_int),
+            move |meta| {
+                metadata.write().unwrap().push(meta);
+            },
+        )
+    };
+    (reader, metadata)
 }
