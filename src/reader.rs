@@ -8,31 +8,50 @@ use tracing::warn;
 use crate::error::{EmptyMetadataError, MetadataParseError};
 use crate::parse::{parse_delimited_string, parse_value_if_valid, ParseResult};
 
+/// Reads icy metadata contained within a stream.
 pub struct IcyMetadataReader<T> {
     inner: T,
-    icy_metaint: Option<usize>,
+    icy_metadata_interval: Option<usize>,
     next_metadata: usize,
     metadata_sizes: VecDeque<usize>,
     current_pos: u64,
-    max_metadata_cache: usize,
+    metadata_size_cache: usize,
     on_metadata_read: Box<dyn Fn(Result<IcyMetadata, MetadataParseError>) + Send + Sync>,
 }
 
 impl<T> IcyMetadataReader<T> {
-    pub fn new<F>(inner: T, icy_metaint: Option<NonZeroUsize>, on_metadata_read: F) -> Self
+    /// Creates a new `IcyMetadataReader`.
+    /// `icy_metadata_interval` is required in order to figure out the location of the metadata
+    /// blocks. If `icy_metadata_interval` is `None`, it will treat the stream as though the
+    /// metadata is absent. You can retrieve the value from
+    /// [`IcyHeaders::metadata_interval`](crate::IcyHeaders::metadata_interval) or by extracting the
+    /// value from the headers manually.
+    pub fn new<F>(
+        inner: T,
+        icy_metadata_interval: Option<NonZeroUsize>,
+        on_metadata_read: F,
+    ) -> Self
     where
         F: Fn(Result<IcyMetadata, MetadataParseError>) + Send + Sync + 'static,
     {
-        let icy_metaint = icy_metaint.map(|i| i.get());
+        let icy_metadata_interval = icy_metadata_interval.map(|i| i.get());
         Self {
             inner,
-            icy_metaint,
+            icy_metadata_interval,
             on_metadata_read: Box::new(on_metadata_read),
-            next_metadata: icy_metaint.unwrap_or(0),
+            next_metadata: icy_metadata_interval.unwrap_or(0),
             metadata_sizes: VecDeque::new(),
-            max_metadata_cache: 1000,
+            metadata_size_cache: 1024,
             current_pos: 0,
         }
+    }
+}
+
+impl<T> IcyMetadataReader<T> {
+    /// Set the capacity of the metadata size
+    pub fn metadata_size_cache(mut self, size: usize) -> Self {
+        self.metadata_size_cache = size;
+        self
     }
 }
 
@@ -95,7 +114,7 @@ where
         let metadata_length = metadata_length_buf[0] as usize * ICY_METADATA_MULTIPLIER;
 
         self.metadata_sizes.push_back(metadata_length);
-        if self.metadata_sizes.len() > self.max_metadata_cache {
+        if self.metadata_sizes.len() > self.metadata_size_cache {
             self.metadata_sizes.pop_front();
         }
         Ok(())
@@ -136,7 +155,7 @@ where
     T: Read,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let Some(metaint) = self.icy_metaint else {
+        let Some(metaint) = self.icy_metadata_interval else {
             return self.inner.read(buf);
         };
 
@@ -156,7 +175,7 @@ where
     T: Read + Seek,
 {
     fn seek(&mut self, seek_from: io::SeekFrom) -> io::Result<u64> {
-        let Some(metaint) = self.icy_metaint else {
+        let Some(metaint) = self.icy_metadata_interval else {
             return self.inner.seek(seek_from);
         };
 
@@ -212,23 +231,29 @@ where
     }
 }
 
+/// Metadata contained within a stream
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IcyMetadata {
-    track_title: Option<String>,
+    stream_title: Option<String>,
     stream_url: Option<String>,
     custom: HashMap<String, String>,
 }
 
 impl IcyMetadata {
-    pub fn track_title(&self) -> Option<&str> {
-        self.track_title.as_deref()
+    /// The title of the currently playing track.
+    /// Maps to the `StreamTitle` metadata value.
+    pub fn stream_title(&self) -> Option<&str> {
+        self.stream_title.as_deref()
     }
 
+    /// This could be an album art URL, an image URL for the stream itself, or some other
+    /// information. Maps to the `StreamUrl` metadata value.
     pub fn stream_url(&self) -> Option<&str> {
         self.stream_url.as_deref()
     }
 
+    /// Any additional fields found in the metadata.
     pub fn custom_fields(&self) -> &HashMap<String, String> {
         &self.custom
     }
@@ -239,7 +264,7 @@ impl FromStr for IcyMetadata {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut metadata = Self {
-            track_title: None,
+            stream_title: None,
             stream_url: None,
             custom: HashMap::new(),
         };
@@ -259,7 +284,7 @@ impl FromStr for IcyMetadata {
             fields_found += 1;
             match key.to_ascii_lowercase().as_str() {
                 "streamtitle" => {
-                    metadata.track_title = Some(value.to_string());
+                    metadata.stream_title = Some(value.to_string());
                 }
                 "streamurl" => {
                     metadata.stream_url = Some(value.to_string());
@@ -319,7 +344,7 @@ fn handle_unescaped_values(s: &str, metadata: &mut IcyMetadata) {
     };
 
     if let Some(stream_title) = stream_title {
-        metadata.track_title = parse_value_if_valid(stream_title);
+        metadata.stream_title = parse_value_if_valid(stream_title);
     };
 
     if let Some(stream_url) = stream_url {

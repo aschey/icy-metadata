@@ -1,4 +1,4 @@
-// #![deny(missing_docs)]
+#![deny(missing_docs)]
 #![forbid(unsafe_code)]
 #![forbid(clippy::unwrap_used)]
 #![deny(rustdoc::broken_intra_doc_links)]
@@ -21,8 +21,10 @@ pub use headers::*;
 use http::HeaderMap;
 pub use reader::*;
 
+/// Header name to request icy metadata.
 pub const ICY_METADATA_HEADER: &str = "Icy-MetaData";
 
+/// Appends the `Icy-MetaData` header to the `header_map`.
 pub fn add_icy_metadata_header(header_map: &mut HeaderMap) {
     header_map.append(
         ICY_METADATA_HEADER,
@@ -30,7 +32,9 @@ pub fn add_icy_metadata_header(header_map: &mut HeaderMap) {
     );
 }
 
+/// Trait for requesting icy metadata from an HTTP request builder
 pub trait RequestIcyMetadata {
+    /// Appends the `Icy-MetaData` header to the request's header map
     fn request_icy_metadata(self) -> Self;
 }
 

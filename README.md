@@ -17,6 +17,7 @@ cargo add icy-metadata
 ## Features
 
 - `reqwest` - adds convenience methods to set icy metadata headers on `reqwest`'s client builder and request builder.
+- `serde` - enables serialization/deserialization for metadata structs.
 
 ## Headers
 

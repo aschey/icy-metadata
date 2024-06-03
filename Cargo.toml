@@ -31,3 +31,13 @@ tokio = { version = "1.38.0", features = ["rt-multi-thread", "macros"] }
 serde = ["dep:serde"]
 reqwest = ["dep:reqwest"]
 default = ["reqwest"]
+
+[[example]]
+name = "stream"
+required-features = ["reqwest"]
+doc-scrape-examples = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+cargo-args = ["-Zunstable-options", "-Zrustdoc-scrape-examples"]

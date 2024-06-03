@@ -29,7 +29,7 @@ fn read_headers() {
     let icy_headers = IcyHeaders::parse_from_headers(&headers);
     assert_eq!(icy_headers.bitrate().unwrap(), 128);
     assert_eq!(icy_headers.genre().unwrap(), "genre");
-    assert_eq!(icy_headers.stream_name().unwrap(), "name");
+    assert_eq!(icy_headers.name().unwrap(), "name");
     assert_eq!(icy_headers.station_url().unwrap(), "url");
     assert!(icy_headers.public().unwrap());
     assert_eq!(icy_headers.metadata_interval().unwrap().get(), 16000);
@@ -77,7 +77,7 @@ fn read_stream_title(
     let metadata = metadata.read().unwrap();
     for i in 0..iters {
         assert_eq!(
-            metadata[i].clone().unwrap().track_title().unwrap(),
+            metadata[i].clone().unwrap().stream_title().unwrap(),
             format!("stream-title{i}")
         );
     }
@@ -134,7 +134,7 @@ fn all_stream_properties(
             format!("stream-url{i}")
         );
         assert_eq!(
-            metadata[i].clone().unwrap().track_title().unwrap(),
+            metadata[i].clone().unwrap().stream_title().unwrap(),
             format!("stream-title{i}")
         );
         assert_eq!(
@@ -202,7 +202,7 @@ fn handle_unescaped_values(
 
     let metadata = metadata.read().unwrap();
     assert_eq!(buf, vec![1; buf.len()]);
-    assert_eq!(metadata[0].clone().unwrap().track_title(), expected_title);
+    assert_eq!(metadata[0].clone().unwrap().stream_title(), expected_title);
     assert_eq!(metadata[0].clone().unwrap().stream_url(), expected_url);
 }
 

@@ -5,12 +5,13 @@ use http::{HeaderMap, HeaderValue};
 
 use crate::parse::{parse_delimited_string, ParseResult};
 
+/// Icy metadata found within HTTP response headers.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IcyHeaders {
     bitrate: Option<u32>,
     genre: Option<String>,
-    stream_name: Option<String>,
+    name: Option<String>,
     station_url: Option<String>,
     description: Option<String>,
     public: Option<bool>,
@@ -30,6 +31,7 @@ fn find_header<'a>(search: &[&'a str], headers: &'a HeaderMap) -> Option<&'a Hea
 }
 
 impl IcyHeaders {
+    /// Parse any icy metadata contained in the `headers`.
     pub fn parse_from_headers(headers: &HeaderMap) -> Self {
         // Most header names taken from here https://github.com/xiph/Icecast-Server/blob/master/src/source.c
         Self {
@@ -38,7 +40,7 @@ impl IcyHeaders {
                 .and_then(|val| val.split(',').next()?.parse().ok()),
             genre: find_header(&["ice-genre", "icy-genre", "x-audiocast-genre"], headers)
                 .and_then(|val| Some(val.to_str().ok()?.to_string())),
-            stream_name: find_header(&["ice-name", "icy-name", "x-audiocast-name"], headers)
+            name: find_header(&["ice-name", "icy-name", "x-audiocast-name"], headers)
                 .and_then(|val| Some(val.to_str().ok()?.to_string())),
             description: find_header(
                 &[
@@ -81,47 +83,63 @@ impl IcyHeaders {
         }
     }
 
+    /// Stream bitrate.
     pub fn bitrate(&self) -> Option<u32> {
         self.bitrate
     }
 
+    /// Stream genre.
     pub fn genre(&self) -> Option<&str> {
         self.genre.as_deref()
     }
 
+    /// Stream description.
     pub fn description(&self) -> Option<&str> {
         self.description.as_deref()
     }
 
-    pub fn stream_name(&self) -> Option<&str> {
-        self.stream_name.as_deref()
+    /// Stream name.
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
     }
 
+    /// Stream station URL.
     pub fn station_url(&self) -> Option<&str> {
         self.station_url.as_deref()
     }
 
+    /// You probably don't care about this, but it's here just in case.
+    /// If it's set, it might say something like `<BR>This stream requires <a href="http://www.winamp.com">Winamp</a><BR>`.
     pub fn notice1(&self) -> Option<&str> {
         self.notice1.as_deref()
     }
 
+    /// You probably don't care about this, but it's here just in case.
+    /// If it's set, it might contain the Icecast/Shoutcast server version.
     pub fn notice2(&self) -> Option<&str> {
         self.notice2.as_deref()
     }
 
+    /// Whether the stream is listed or not.
     pub fn public(&self) -> Option<bool> {
         self.public
     }
 
+    /// This will only be set if the stream was requested with the `Icy-MetaInt` header set to `1`.
+    /// Use the convenience functions in this crate to set this, or add the header yourself.
+    /// This needs to be passed in to [`IcyMetadataReader::new`](crate::IcyMetadataReader::new) in
+    /// order to read the metadata.
     pub fn metadata_interval(&self) -> Option<NonZeroUsize> {
         self.metadata_interval
     }
 
+    /// Additional audio properties, if available.
     pub fn audio_info(&self) -> Option<&IcyAudioInfo> {
         self.audio_info.as_ref()
     }
 }
 
+/// Optional additional information about the stream audio
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IcyAudioInfo {
@@ -169,22 +187,27 @@ impl IcyAudioInfo {
         info
     }
 
+    /// Stream sample rate.
     pub fn sample_rate(&self) -> Option<u32> {
         self.sample_rate
     }
 
+    /// Stream bitrate.
     pub fn bitrate(&self) -> Option<u32> {
         self.bitrate
     }
 
+    /// Number of channels in the stream.
     pub fn channels(&self) -> Option<u16> {
         self.channels
     }
 
+    /// Stream quality.
     pub fn quality(&self) -> Option<&str> {
         self.quality.as_deref()
     }
 
+    /// Additional properties, if available.
     pub fn custom(&self) -> &HashMap<String, String> {
         &self.custom
     }
