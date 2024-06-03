@@ -1,4 +1,5 @@
 use std::collections::{HashMap, VecDeque};
+use std::fmt::Debug;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::num::NonZeroUsize;
 use std::str::FromStr;
@@ -17,6 +18,20 @@ pub struct IcyMetadataReader<T> {
     current_pos: u64,
     metadata_size_cache: usize,
     on_metadata_read: Box<dyn Fn(Result<IcyMetadata, MetadataParseError>) + Send + Sync>,
+}
+
+impl<T> Debug for IcyMetadataReader<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IcyMetadataReader")
+            .field("inner", &"<inner>")
+            .field("icy_metadata_interval", &self.icy_metadata_interval)
+            .field("next_metadata", &self.next_metadata)
+            .field("metadata_sizes", &self.metadata_sizes)
+            .field("current_pos", &self.current_pos)
+            .field("metadata_size_cache", &self.metadata_size_cache)
+            .field("on_metadata_read", &"<on_metadata_read>")
+            .finish()
+    }
 }
 
 impl<T> IcyMetadataReader<T> {
