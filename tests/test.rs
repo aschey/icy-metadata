@@ -322,7 +322,7 @@ fn empty_metadata(
 fn seek_from_start(
     #[values("StreamUrl='stream-url{}';")] meta_bytes: &str,
     #[values((10,5))] byte_lens: (usize, usize),
-    #[values(1)] iters: usize,
+    #[values(2)] iters: usize,
 ) {
     use std::io::Seek;
 
@@ -392,6 +392,14 @@ fn seek_from_start(
         );
     }
     let _ = reader.seek(SeekFrom::Start(0)).unwrap();
+    let _ = reader.read(&mut buf[..meta_int + 1]);
+    assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
+
+    buf.clear();
+    let _ = reader.read_to_end(&mut buf);
+    assert_eq!(buf, vec![1; buf_len - (meta_int + 1)]);
+
+    let _ = reader.seek(SeekFrom::Start(0));
     let _ = reader.read(&mut buf[..meta_int + 1]);
     assert_eq!(buf[..meta_int + 1], vec![1; meta_int + 1]);
 

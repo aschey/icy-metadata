@@ -84,14 +84,20 @@ where
         Ok(())
     }
 
-    fn read_metadata(&mut self) -> io::Result<()> {
+    fn update_metadata_size(&mut self) -> io::Result<()> {
         let mut metadata_length_buf = [0u8; 1];
         self.inner.read_exact(&mut metadata_length_buf)?;
 
         let metadata_length = metadata_length_buf[0] as usize * ICY_METADATA_MULTIPLIER;
-        self.last_metadata_size = metadata_length + 1;
-        if metadata_length > 0 {
-            let mut metadata_buf = vec![0u8; metadata_length];
+
+        self.last_metadata_size = metadata_length;
+        Ok(())
+    }
+
+    fn read_metadata(&mut self) -> io::Result<()> {
+        self.update_metadata_size()?;
+        if self.last_metadata_size > 0 {
+            let mut metadata_buf = vec![0u8; self.last_metadata_size];
             self.inner.read_exact(&mut metadata_buf)?;
 
             let callback_val = String::from_utf8(metadata_buf)
@@ -148,17 +154,25 @@ where
             }
         };
 
-        let current_absolute_pos = self.inner.stream_position()? as i64;
+        let mut current_absolute_pos = self.inner.stream_position()? as i64;
         let mut seek_progress = 0i64;
-        if requested_change < 0 {
-            let last_metadata_pos = (metaint - self.next_metadata) as i64;
-            let last_metadata_end = current_absolute_pos - last_metadata_pos;
 
-            if current_absolute_pos + requested_change < last_metadata_end {
-                self.inner.seek(SeekFrom::Current(
-                    -(self.last_metadata_size as i64 + last_metadata_pos),
-                ))?;
-                seek_progress -= last_metadata_pos;
+        if requested_change < 0 {
+            let mut last_metadata_offset = (metaint - self.next_metadata) as i64;
+            let mut last_metadata_end_pos = current_absolute_pos - last_metadata_offset;
+
+            while current_absolute_pos + requested_change - seek_progress < last_metadata_end_pos
+                && last_metadata_end_pos > 0
+            {
+                // +1 for the byte that holds the metadata length
+                let metadata_region_size = self.last_metadata_size as i64 + 1;
+                let seek_to = (last_metadata_end_pos - metadata_region_size) as u64;
+                self.inner.seek(SeekFrom::Start(seek_to))?;
+                seek_progress -= last_metadata_offset;
+                self.update_metadata_size()?;
+                current_absolute_pos = self.inner.seek(SeekFrom::Current(-1))? as i64;
+                last_metadata_offset = metaint as i64;
+                last_metadata_end_pos -= metadata_region_size + metaint as i64;
             }
         } else if requested_change >= self.next_metadata as i64 {
             self.inner
@@ -250,8 +264,8 @@ impl FromStr for IcyMetadata {
 fn handle_unescaped_values(s: &str, metadata: &mut IcyMetadata) {
     let lower_string = s.to_ascii_lowercase();
     let stream_title_index = lower_string.find("streamtitle=");
-
     let stream_url_index = lower_string.find("streamurl=");
+
     let (stream_title, stream_url) = match (stream_title_index, stream_url_index) {
         (Some(stream_title_index), Some(stream_url_index)) => {
             let (stream_title, stream_url) = if stream_title_index < stream_url_index {
