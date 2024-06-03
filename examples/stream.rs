@@ -2,7 +2,7 @@ use std::error::Error;
 use std::num::NonZeroUsize;
 
 use icy_metadata::{IcyHeaders, IcyMetadataReader, RequestIcyMetadata};
-use stream_download::http::reqwest::{self, Client};
+use stream_download::http::reqwest::Client;
 use stream_download::http::HttpStream;
 use stream_download::storage::bounded::BoundedStorageProvider;
 use stream_download::storage::memory::MemoryStorageProvider;
@@ -13,11 +13,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let (_stream, handle) = rodio::OutputStream::try_default()?;
     let sink = rodio::Sink::try_new(&handle)?;
 
-    let mut headers = reqwest::header::HeaderMap::new();
     // We need to add a header to tell the Icecast server that we can parse the metadata embedded
     // within the stream itself.
-    headers.request_icy_metadata();
-    let client = Client::builder().default_headers(headers).build()?;
+    let client = Client::builder().request_icy_metadata().build()?;
 
     let stream =
         HttpStream::new(client, "https://ice6.somafm.com/insound-128-mp3".parse()?).await?;

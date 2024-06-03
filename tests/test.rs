@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock};
 
 use http::HeaderMap;
 use icy_metadata::error::{EmptyMetadataError, MetadataParseError};
-use icy_metadata::{IcyHeaders, IcyMetadata, IcyMetadataReader, RequestIcyMetadata};
+use icy_metadata::{add_icy_metadata_header, IcyHeaders, IcyMetadata, IcyMetadataReader};
 use rstest::rstest;
 
 #[test]
@@ -55,7 +55,7 @@ fn read_no_headers() {
 #[test]
 fn add_metadata_header() {
     let mut map = HeaderMap::new();
-    map.request_icy_metadata();
+    add_icy_metadata_header(&mut map);
     assert_eq!(map.get("Icy-Metadata").unwrap().to_str().unwrap(), "1");
 }
 

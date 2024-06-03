@@ -8,6 +8,16 @@
 
 [icy-metadata](https://github.com/aschey/icy-metadata) is a library for reading metadata returned from Icecast-compatible web servers.
 
+## Installation
+
+```sh
+cargo add icy-metadata
+```
+
+## Features
+
+- `reqwest` - adds convenience methods to set metadata requests on `reqwest`'s client builder and request builder.
+
 ## Headers
 
 Parse common Icecast headers from an HTTP response.
@@ -47,14 +57,11 @@ use stream_download::{Settings, StreamDownload};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let mut headers = reqwest::header::HeaderMap::new();
     // We need to add a header to tell the Icecast server that we can parse the metadata embedded
     // within the stream itself.
-    headers.request_icy_metadata();
-    let client = Client::builder().default_headers(headers).build()?;
-
+    let client = Client::builder().request_icy_metadata().build()?;
     let stream =
-        HttpStream::new(client, "https://ice6.somafm.com/insound-128-mp3".parse()?).await?;
+        HttpStream::new(client, "https://some-cool-url.com/some-file.mp3".parse()?).await?;
 
     let icy_headers = IcyHeaders::parse_from_headers(stream.headers());
 
