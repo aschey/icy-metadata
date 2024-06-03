@@ -3,6 +3,14 @@ name = "icy-metadata"
 version = "0.1.0"
 rust-version = "1.65.0"
 edition = "2021"
+authors = ["Austin Schey <aschey13@gmail.com>"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/aschey/icy-metadata"
+keywords = ["audio", "stream", "media", "icecast", "icy"]
+categories = ["multimedia", "parsing"]
+description = "A library for parsing Icecast metadata"
+include = ["/src", "/examples", "/tests"]
 
 [dependencies]
 http = "1"

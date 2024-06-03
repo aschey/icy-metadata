@@ -57,8 +57,8 @@ use stream_download::{Settings, StreamDownload};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // We need to add a header to tell the Icecast server that we can parse the metadata embedded
-    // within the stream itself.
+    // We need to add a header to tell the Icecast server that we can parse the metadata 
+    // embedded within the stream itself.
     let client = Client::builder().request_icy_metadata().build()?;
     let stream =
         HttpStream::new(client, "https://some-cool-url.com/some-file.mp3".parse()?).await?;
@@ -74,8 +74,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         // use bounded storage to keep the underlying size from growing indefinitely
         BoundedStorageProvider::new(
             MemoryStorageProvider,
-            // be liberal with the buffer size, you need to make sure it holds enough space to
-            // prevent any out-of-bounds reads
+            // be liberal with the buffer size, you need to make sure it holds 
+            // enough space to prevent any out-of-bounds reads
             NonZeroUsize::new(512 * 1024).unwrap(),
         ),
         Settings::default().prefetch_bytes(prefetch_bytes as u64),
@@ -84,8 +84,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let metadata_reader = IcyMetadataReader::new(
         reader,
-        // Since we requested icy metadata, the metadata interval header should be present in the
-        // response. This will allow us to parse the metadata within the stream
+        // Since we requested icy metadata, the metadata interval header should be 
+        // present in the response. This will allow us to parse the metadata 
+        // within the stream.
         icy_headers.metadata_interval(),
         // Print the stream metadata whenever we receive new values
         |metadata| println!("{metadata:?}\n"),
@@ -94,3 +95,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 ```
+
+## Supported Rust Versions
+
+The MSRV is currently `1.65.0`.
