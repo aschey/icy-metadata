@@ -16,7 +16,7 @@ cargo add icy-metadata
 
 ## Features
 
-- `reqwest` - adds convenience methods to set metadata requests on `reqwest`'s client builder and request builder.
+- `reqwest` - adds convenience methods to set icy metadata headers on `reqwest`'s client builder and request builder.
 
 ## Headers
 
