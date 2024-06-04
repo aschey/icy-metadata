@@ -37,6 +37,11 @@ name = "stream"
 required-features = ["reqwest"]
 doc-scrape-examples = true
 
+[[example]]
+name = "seek"
+required-features = ["reqwest"]
+doc-scrape-examples = true
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
