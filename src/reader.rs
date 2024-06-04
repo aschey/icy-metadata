@@ -18,7 +18,7 @@ use crate::parse::{parse_delimited_string, parse_value_if_valid, ParseResult};
 /// - Seeking backwards is limited by the size of the metadata cache. Since the metadata values have
 ///   dynamic sizes, we need to know the size of the previous metadata value to seek past it. In
 ///   order to prevent unbounded memory growth, we cap the number of previous metadata sizes we keep
-///   track of. You can change this limit using [`Self::metadata_size_cache`]. In practice, most
+///   track of. You can change this limit using [`Self::metadata_cache_size`]. In practice, most
 ///   metadata is 0-sized except for at the start of each track. We use rudimentary compression so
 ///   consecutive metadata entries of the same size don't take up additional slots in the array.
 ///   This means you shouldn't exceed the default value of `128` unless you're going really far
