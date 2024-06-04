@@ -337,29 +337,15 @@ fn seek_from_start(
 }
 
 #[rstest]
-#[case(
-    vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';","StreamUrl='stream-url123';"], 
-    vec!["stream-url123"],
-    20
-)]
-#[case(
-    vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';","StreamUrl='stream-url123';"], 
-    vec!["stream-url0","stream-urlabc1235678","stream-url123"],
-    5
-)]
-#[case(
-    vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';","StreamUrl='stream-url123';"], 
-    vec!["stream-urlabc1235678","stream-url123"],
-    10
-)]
-#[case(
-    vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';","StreamUrl='stream-url123';"], 
-    vec!["stream-urlabc1235678","stream-url123"],
-    15
-)]
+#[case(20)]
+#[case(5)]
+#[case(10)]
+#[case(15)]
 fn seek_from_start_to_future(
-    #[case] metadata_in: Vec<&str>,
-    #[case] metadata_out: Vec<&str>,
+    #[values( vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';","StreamUrl='stream-url123';"])]
+    metadata_in: Vec<&str>,
+    #[values(vec!["stream-url0","stream-urlabc1235678","stream-url123"])] metadata_out: Vec<&str>,
+
     #[values((10,5))] byte_lens: (usize, usize),
     #[case] seek_pos: usize,
 ) {

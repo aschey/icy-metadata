@@ -18,14 +18,17 @@ use crate::parse::{parse_delimited_string, parse_value_if_valid, ParseResult};
 /// - Seeking backwards is limited by the size of the metadata cache. Since the metadata values have
 ///   dynamic sizes, we need to know the size of the previous metadata value to seek past it. In
 ///   order to prevent unbounded memory growth, we cap the number of previous metadata sizes we keep
-///   track of. You can change this limit using [`Self::metadata_size_cache`].
+///   track of. You can change this limit using [`Self::metadata_size_cache`]. In practice, most
+///   metadata is 0-sized except for at the start of each track. We use rudimentary compression so
+///   consecutive metadata entries of the same size don't take up additional slots in the array.
+///   This means you shouldn't exceed the default value of `128` unless you're going really far
+///   back.
 pub struct IcyMetadataReader<T> {
     inner: T,
     icy_metadata_interval: Option<usize>,
     next_metadata: usize,
-    metadata_sizes: VecDeque<usize>,
+    metadata_size_queue: MetadataSizeQueue,
     current_pos: u64,
-    metadata_size_cache: usize,
     on_metadata_read: Box<dyn Fn(Result<IcyMetadata, MetadataParseError>) + Send + Sync>,
 }
 
@@ -35,9 +38,8 @@ impl<T> Debug for IcyMetadataReader<T> {
             .field("inner", &"<inner>")
             .field("icy_metadata_interval", &self.icy_metadata_interval)
             .field("next_metadata", &self.next_metadata)
-            .field("metadata_sizes", &self.metadata_sizes)
+            .field("metadata_size_queue", &self.metadata_size_queue)
             .field("current_pos", &self.current_pos)
-            .field("metadata_size_cache", &self.metadata_size_cache)
             .field("on_metadata_read", &"<on_metadata_read>")
             .finish()
     }
@@ -64,8 +66,11 @@ impl<T> IcyMetadataReader<T> {
             icy_metadata_interval,
             on_metadata_read: Box::new(on_metadata_read),
             next_metadata: icy_metadata_interval.unwrap_or(0),
-            metadata_sizes: VecDeque::new(),
-            metadata_size_cache: 1024,
+            metadata_size_queue: MetadataSizeQueue {
+                inner: VecDeque::new(),
+                cache_size: 128,
+            },
+
             current_pos: 0,
         }
     }
@@ -73,8 +78,8 @@ impl<T> IcyMetadataReader<T> {
 
 impl<T> IcyMetadataReader<T> {
     /// Set the capacity of the metadata size
-    pub fn metadata_size_cache(mut self, size: usize) -> Self {
-        self.metadata_size_cache = size;
+    pub fn metadata_cache_size(mut self, size: usize) -> Self {
+        self.metadata_size_queue.cache_size = size;
         self
     }
 }
@@ -119,7 +124,7 @@ where
             *total_written += written;
         }
 
-        self.read_metadata(ReadMode::TriggerCallback)?;
+        self.read_metadata()?;
         self.next_metadata = metaint;
         let start = *total_written;
 
@@ -137,41 +142,30 @@ where
 
         let metadata_length = metadata_length_buf[0] as usize * ICY_METADATA_MULTIPLIER;
 
-        self.metadata_sizes.push_back(metadata_length);
-        if self.metadata_sizes.len() > self.metadata_size_cache {
-            self.metadata_sizes.pop_front();
-        }
+        self.metadata_size_queue.push(metadata_length);
         Ok(())
     }
 
-    fn read_metadata(&mut self, read_mode: ReadMode) -> io::Result<()> {
+    fn read_metadata(&mut self) -> io::Result<()> {
         self.update_metadata_size()?;
-        if let Some(last_size) = self.metadata_sizes.back() {
-            if *last_size > 0 {
-                let mut metadata_buf = vec![0u8; *last_size];
+        if let Some(last_size) = self.metadata_size_queue.peek() {
+            if last_size > 0 {
+                let mut metadata_buf = vec![0u8; last_size];
                 self.inner.read_exact(&mut metadata_buf)?;
 
-                if read_mode == ReadMode::TriggerCallback {
-                    let callback_val = String::from_utf8(metadata_buf)
-                        .map_err(MetadataParseError::InvalidUtf8)
-                        .and_then(|metadata_str| {
-                            let metadata_str = metadata_str.trim_end_matches(char::from(0));
-                            metadata_str
-                                .parse::<IcyMetadata>()
-                                .map_err(MetadataParseError::Empty)
-                        });
-                    (self.on_metadata_read)(callback_val);
-                }
+                let callback_val = String::from_utf8(metadata_buf)
+                    .map_err(MetadataParseError::InvalidUtf8)
+                    .and_then(|metadata_str| {
+                        let metadata_str = metadata_str.trim_end_matches(char::from(0));
+                        metadata_str
+                            .parse::<IcyMetadata>()
+                            .map_err(MetadataParseError::Empty)
+                    });
+                (self.on_metadata_read)(callback_val);
             }
         }
         Ok(())
     }
-}
-
-#[derive(PartialEq, Eq)]
-enum ReadMode {
-    TriggerCallback,
-    IgnoreCallback,
 }
 
 impl<T> Read for IcyMetadataReader<T>
@@ -224,7 +218,7 @@ where
             while current_absolute_pos + requested_change - seek_progress < last_metadata_end_pos
                 && last_metadata_end_pos > 0
             {
-                let Some(last_metadata_size) = self.metadata_sizes.pop_back() else {
+                let Some(last_metadata_size) = self.metadata_size_queue.pop() else {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidData,
                         "attempting to seek beyond metadata length cache",
@@ -244,7 +238,7 @@ where
                 self.inner
                     .seek(SeekFrom::Current(self.next_metadata as i64))?;
                 seek_progress += self.next_metadata as i64;
-                self.read_metadata(ReadMode::IgnoreCallback)?;
+                self.read_metadata()?;
             }
         }
         self.inner
@@ -374,4 +368,45 @@ fn handle_unescaped_values(s: &str, metadata: &mut IcyMetadata) {
     if let Some(stream_url) = stream_url {
         metadata.stream_url = parse_value_if_valid(stream_url);
     };
+}
+
+#[derive(Debug)]
+struct MetadataSize {
+    size: usize,
+    count: usize,
+}
+
+#[derive(Debug)]
+struct MetadataSizeQueue {
+    inner: VecDeque<MetadataSize>,
+    cache_size: usize,
+}
+
+impl MetadataSizeQueue {
+    fn push(&mut self, size: usize) {
+        if let Some(last) = self.inner.back_mut() {
+            if last.size == size {
+                last.count += 1;
+                return;
+            }
+        }
+        self.inner.push_back(MetadataSize { size, count: 1 });
+        if self.inner.len() >= self.cache_size {
+            self.inner.pop_front();
+        }
+    }
+
+    fn pop(&mut self) -> Option<usize> {
+        let last = self.inner.back_mut()?;
+        last.count -= 1;
+        let size = last.size;
+        if last.count == 0 {
+            self.inner.pop_back();
+        }
+        Some(size)
+    }
+
+    fn peek(&self) -> Option<usize> {
+        self.inner.back().map(|b| b.size)
+    }
 }
