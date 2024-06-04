@@ -11,6 +11,7 @@ use rstest::rstest;
 fn read_headers() {
     let mut headers = HeaderMap::new();
     headers.append("Icy-Br", "128".parse().unwrap());
+    headers.append("Icy-Sr", "44100".parse().unwrap());
     headers.append("Icy-Genre", "genre".parse().unwrap());
     headers.append("Icy-Name", "name".parse().unwrap());
     headers.append("Icy-Url", "url".parse().unwrap());
@@ -28,6 +29,7 @@ fn read_headers() {
 
     let icy_headers = IcyHeaders::parse_from_headers(&headers);
     assert_eq!(icy_headers.bitrate().unwrap(), 128);
+    assert_eq!(icy_headers.sample_rate().unwrap(), 44100);
     assert_eq!(icy_headers.genre().unwrap(), "genre");
     assert_eq!(icy_headers.name().unwrap(), "name");
     assert_eq!(icy_headers.station_url().unwrap(), "url");
