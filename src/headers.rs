@@ -5,6 +5,41 @@ use http::{HeaderMap, HeaderValue};
 
 use crate::parse::{parse_delimited_string, ParseResult};
 
+/// Header name to request icy metadata.
+pub const ICY_METADATA_HEADER: &str = "Icy-MetaData";
+
+/// Appends the `Icy-MetaData` header to the `header_map`.
+pub fn add_icy_metadata_header(header_map: &mut HeaderMap) {
+    header_map.append(
+        ICY_METADATA_HEADER,
+        "1".parse().expect("valid header value"),
+    );
+}
+
+/// Trait for requesting icy metadata from an HTTP request builder
+pub trait RequestIcyMetadata {
+    /// Appends the `Icy-MetaData` header to the request's header map
+    fn request_icy_metadata(self) -> Self;
+}
+
+#[cfg(feature = "reqwest")]
+impl RequestIcyMetadata for reqwest::ClientBuilder {
+    fn request_icy_metadata(self) -> Self {
+        let mut header_map = HeaderMap::new();
+        add_icy_metadata_header(&mut header_map);
+        self.default_headers(header_map)
+    }
+}
+
+#[cfg(feature = "reqwest")]
+impl RequestIcyMetadata for reqwest::RequestBuilder {
+    fn request_icy_metadata(self) -> Self {
+        let mut header_map = HeaderMap::new();
+        add_icy_metadata_header(&mut header_map);
+        self.headers(header_map)
+    }
+}
+
 /// Icy metadata found within HTTP response headers.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

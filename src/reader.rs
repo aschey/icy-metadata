@@ -77,7 +77,7 @@ impl<T> IcyMetadataReader<T> {
 }
 
 impl<T> IcyMetadataReader<T> {
-    /// Set the capacity of the metadata size
+    /// Set the size of the metadata cache.
     pub fn metadata_cache_size(mut self, size: usize) -> Self {
         self.metadata_size_queue.cache_size = size;
         self
@@ -173,6 +173,7 @@ where
     T: Read,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        // Default to normal read behavior if metaint is not set
         let Some(metaint) = self.icy_metadata_interval else {
             return self.inner.read(buf);
         };
@@ -193,6 +194,7 @@ where
     T: Read + Seek,
 {
     fn seek(&mut self, seek_from: io::SeekFrom) -> io::Result<u64> {
+        // Default to normal behavior if metaint is not set
         let Some(metaint) = self.icy_metadata_interval else {
             return self.inner.seek(seek_from);
         };
@@ -215,18 +217,22 @@ where
             let mut last_metadata_offset = (metaint - self.next_metadata) as i64;
             let mut last_metadata_end_pos = current_absolute_pos - last_metadata_offset;
 
+            // Keep seeking back through the previous metadata entries until we reach a point where
+            // the next seek point is after the next metadata
             while current_absolute_pos + requested_change - seek_progress < last_metadata_end_pos
                 && last_metadata_end_pos > 0
             {
                 let Some(last_metadata_size) = self.metadata_size_queue.pop() else {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidData,
-                        "attempting to seek beyond metadata length cache",
+                        "Attempting to seek beyond metadata length cache. You may need to call \
+                         IcyMetadataReader::metadata_cache_size to increase the cache size.",
                     ));
                 };
                 // +1 for the byte that holds the metadata length
                 let metadata_region_size = last_metadata_size as i64 + 1;
                 let seek_to = (last_metadata_end_pos - metadata_region_size) as u64;
+                // Seek before the metadata entry
                 current_absolute_pos = self.inner.seek(SeekFrom::Start(seek_to))? as i64;
                 seek_progress -= last_metadata_offset;
 
@@ -234,10 +240,13 @@ where
                 last_metadata_end_pos -= metadata_region_size + metaint as i64;
             }
         } else {
+            // Keep seeking forward through each metadata entry until we reach a point where
+            // the next seek point is before the next metadata
             while requested_change - seek_progress >= self.next_metadata as i64 {
                 self.inner
                     .seek(SeekFrom::Current(self.next_metadata as i64))?;
                 seek_progress += self.next_metadata as i64;
+                // Read the metadata and continue
                 self.read_metadata()?;
             }
         }
