@@ -10,6 +10,7 @@ use crate::parse::{parse_delimited_string, ParseResult};
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IcyHeaders {
     bitrate: Option<u32>,
+    sample_rate: Option<u32>,
     genre: Option<String>,
     name: Option<String>,
     station_url: Option<String>,
@@ -37,7 +38,16 @@ impl IcyHeaders {
         Self {
             bitrate: find_header(&["ice-bitrate", "icy-br", "x-audiocast-bitrate"], headers)
                 .and_then(|val| val.to_str().ok())
+                // sometimes there are multiple values here, we'll just take the first one
                 .and_then(|val| val.split(',').next()?.parse().ok()),
+            // Note: this isn't included in the Icecast-Server repo, but I've seen a few servers
+            // include icy-sr as a header. Unclear if the other aliases here are
+            // actually used at all
+            sample_rate: find_header(
+                &["ice-samplerate", "icy-sr", "x-audiocast-samplerate"],
+                headers,
+            )
+            .and_then(|val| val.to_str().ok()?.parse().ok()),
             genre: find_header(&["ice-genre", "icy-genre", "x-audiocast-genre"], headers)
                 .and_then(|val| Some(val.to_str().ok()?.to_string())),
             name: find_header(&["ice-name", "icy-name", "x-audiocast-name"], headers)
@@ -86,6 +96,11 @@ impl IcyHeaders {
     /// Stream bitrate.
     pub fn bitrate(&self) -> Option<u32> {
         self.bitrate
+    }
+
+    /// Stream sample rate.
+    pub fn sample_rate(&self) -> Option<u32> {
+        self.sample_rate
     }
 
     /// Stream genre.
