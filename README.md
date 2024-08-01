@@ -105,4 +105,4 @@ Seeking is supported with a few limitations. See the docs for [`IcyMetadataReade
 
 ## Supported Rust Versions
 
-The MSRV is currently `1.65.0`.
+The MSRV is currently `1.70.0`.
