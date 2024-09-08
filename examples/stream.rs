@@ -4,6 +4,7 @@ use std::num::NonZeroUsize;
 use icy_metadata::{IcyHeaders, IcyMetadataReader, RequestIcyMetadata};
 use stream_download::http::reqwest::Client;
 use stream_download::http::HttpStream;
+use stream_download::source::DecodeError;
 use stream_download::storage::bounded::BoundedStorageProvider;
 use stream_download::storage::memory::MemoryStorageProvider;
 use stream_download::{Settings, StreamDownload};
@@ -28,7 +29,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // bitrate (in kilobits) / bits per byte * bytes per kilobyte * 5 seconds
     let prefetch_bytes = icy_headers.bitrate().unwrap() / 8 * 1024 * 5;
 
-    let reader = StreamDownload::from_stream(
+    let reader = match StreamDownload::from_stream(
         stream,
         // use bounded storage to keep the underlying size from growing indefinitely
         BoundedStorageProvider::new(
@@ -39,7 +40,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         ),
         Settings::default().prefetch_bytes(prefetch_bytes as u64),
     )
-    .await?;
+    .await
+    {
+        Ok(reader) => reader,
+        Err(e) => return Err(e.decode_error().await)?,
+    };
     sink.append(rodio::Decoder::new(IcyMetadataReader::new(
         reader,
         // Since we requested icy metadata, the metadata interval header should be present in the

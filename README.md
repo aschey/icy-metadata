@@ -32,8 +32,7 @@ use std::error::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let stream =
-        reqwest::get("https://some-cool-url.com/some-file.mp3").await?;
+    let stream = reqwest::get("https://some-cool-url.com/some-file.mp3").await?;
 
     let icy_headers = IcyHeaders::parse_from_headers(stream.headers());
     println!("{icy_headers:?}");
@@ -60,7 +59,7 @@ use stream_download::{Settings, StreamDownload};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // We need to add a header to tell the Icecast server that we can parse the metadata 
+    // We need to add a header to tell the Icecast server that we can parse the metadata
     // embedded within the stream itself.
     let client = Client::builder().request_icy_metadata().build()?;
     let stream =
@@ -77,7 +76,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         // use bounded storage to keep the underlying size from growing indefinitely
         BoundedStorageProvider::new(
             MemoryStorageProvider,
-            // be liberal with the buffer size, you need to make sure it holds 
+            // be liberal with the buffer size, you need to make sure it holds
             // enough space to prevent any out-of-bounds reads
             NonZeroUsize::new(512 * 1024).unwrap(),
         ),
@@ -87,8 +86,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let metadata_reader = IcyMetadataReader::new(
         reader,
-        // Since we requested icy metadata, the metadata interval header should be 
-        // present in the response. This will allow us to parse the metadata 
+        // Since we requested icy metadata, the metadata interval header should be
+        // present in the response. This will allow us to parse the metadata
         // within the stream.
         icy_headers.metadata_interval(),
         // Print the stream metadata whenever we receive new values
