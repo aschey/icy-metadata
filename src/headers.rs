@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
 
 use http::{HeaderMap, HeaderValue};
 
-use crate::parse::{parse_delimited_string, ParseResult};
+use crate::parse::{ParseResult, parse_delimited_string};
 
 /// Header name to request icy metadata.
 pub const ICY_METADATA_HEADER: &str = "Icy-MetaData";

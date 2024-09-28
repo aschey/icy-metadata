@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock};
 
 use http::HeaderMap;
 use icy_metadata::error::{EmptyMetadataError, MetadataParseError};
-use icy_metadata::{add_icy_metadata_header, IcyHeaders, IcyMetadata, IcyMetadataReader};
+use icy_metadata::{IcyHeaders, IcyMetadata, IcyMetadataReader, add_icy_metadata_header};
 use rstest::rstest;
 
 #[test]
