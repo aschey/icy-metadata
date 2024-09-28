@@ -7,7 +7,7 @@ use std::str::FromStr;
 use tracing::warn;
 
 use crate::error::{EmptyMetadataError, MetadataParseError};
-use crate::parse::{parse_delimited_string, parse_value_if_valid, ParseResult};
+use crate::parse::{ParseResult, parse_delimited_string, parse_value_if_valid};
 
 /// Reads icy metadata contained within a stream.
 ///

@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use icy_metadata::{IcyHeaders, IcyMetadataReader, RequestIcyMetadata};
 use rodio::source::SeekError;
-use stream_download::http::reqwest::Client;
 use stream_download::http::HttpStream;
+use stream_download::http::reqwest::Client;
 use stream_download::source::DecodeError;
 use stream_download::storage::bounded::BoundedStorageProvider;
 use stream_download::storage::memory::MemoryStorageProvider;
