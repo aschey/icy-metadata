@@ -152,6 +152,7 @@ fn all_stream_properties(
 }
 
 #[rstest]
+// cspell:disable
 #[case("StreamTitle='stream-t;itle';", Some("stream-t;itle"), None)]
 #[case("StreamTitle=';stream-title';", Some(";stream-title"), None)]
 #[case("StreamTitle=';stream-title;';", Some(";stream-title;"), None)]
@@ -188,6 +189,7 @@ fn all_stream_properties(
     Some(";stre'am-;title;"),
     Some("stre'am=url")
 )]
+// cspell:enable
 fn handle_unescaped_values(
     #[case] meta_bytes: &str,
     #[case] expected_title: Option<&str>,
@@ -293,6 +295,7 @@ fn empty_metadata(
 }
 
 #[rstest]
+// cspell:disable
 #[case(
     vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';","StreamUrl='stream-url123';"], 
     vec!["stream-url0", "stream-urlabc1235678", "stream-url123","stream-url0", "stream-urlabc1235678", "stream-url123"],
@@ -313,6 +316,7 @@ fn empty_metadata(
     vec!["stream-url0", "stream-urlabc1235678", "stream-url123","stream-urlabc1235678", "stream-url123"],
     15
 )]
+// cspell:enable
 fn seek_from_start(
     #[case] metadata_in: Vec<&str>,
     #[case] metadata_out: Vec<&str>,
@@ -344,10 +348,11 @@ fn seek_from_start(
 #[case(10)]
 #[case(15)]
 fn seek_from_start_to_future(
+    // cspell:disable
     #[values( vec!["StreamUrl='stream-url0';","StreamUrl='stream-urlabc1235678';","StreamUrl='stream-url123';"])]
     metadata_in: Vec<&str>,
     #[values(vec!["stream-url0","stream-urlabc1235678","stream-url123"])] metadata_out: Vec<&str>,
-
+    // cspell:enable
     #[values((10,5))] byte_lens: (usize, usize),
     #[case] seek_pos: usize,
 ) {

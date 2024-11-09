@@ -8,7 +8,8 @@
 ![GitHub repo size](https://img.shields.io/github/repo-size/aschey/icy-metadata)
 ![Lines of Code](https://aschey.tech/tokei/github/aschey/icy-metadata)
 
-[icy-metadata](https://github.com/aschey/icy-metadata) is a library for reading metadata returned from Icecast-compatible web servers.
+[icy-metadata](https://github.com/aschey/icy-metadata) is a library for reading
+metadata returned from Icecast-compatible web servers.
 
 ## Installation
 
@@ -18,13 +19,14 @@ cargo add icy-metadata
 
 ## Features
 
-- `reqwest` - adds convenience methods to set icy metadata headers on `reqwest`'s client builder and request builder.
+- `reqwest` - adds convenience methods to set icy metadata headers on
+  `reqwest`'s client builder and request builder.
 - `serde` - enables serialization/deserialization for metadata structs.
 
 ## Headers
 
-Parse common Icecast headers from an HTTP response.
-`icy-metadata` will look for several common aliases to find the header values.
+Parse common Icecast headers from an HTTP response. `icy-metadata` will look for
+several common aliases to find the header values.
 
 ```rust,no_run
 use icy_metadata::IcyHeaders;
@@ -43,8 +45,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 ## Reading information contained within the stream
 
-Some streams have information about the current track contained within the stream itself.
-Wrapping the stream in an `IcyMetadataReader` provides an interface to read those values.
+Some streams have information about the current track contained within the
+stream itself. Wrapping the stream in an `IcyMetadataReader` provides an
+interface to read those values.
 
 ```rust,no_run
 use std::error::Error;
@@ -100,7 +103,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 ### Seeking within the stream
 
-Seeking is supported with a few limitations. See the docs for [`IcyMetadataReader`](https://docs.rs/icy_metadata/latest/icy_metadata/struct.IcyMetadataReader.html) for details.
+Seeking is supported with a few limitations. See the docs for
+[`IcyMetadataReader`](https://docs.rs/icy_metadata/latest/icy_metadata/struct.IcyMetadataReader.html)
+for details.
 
 ## Supported Rust Versions
 

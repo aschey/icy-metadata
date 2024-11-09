@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     move |_stream, cancellation_token| {
                         // If the stream reconnects after a network failure, the internal state of
                         // the metadata parser is likely invalid.
-                        // We should cancel the current download task and reinstantiate it in order
+                        // We should cancel the current download task and re-instantiate it in order
                         // to reset everything.
                         cancellation_token.cancel();
                         restart.store(true, Ordering::Relaxed);
