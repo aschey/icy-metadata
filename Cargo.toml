@@ -1,7 +1,7 @@
 [package]
 name = "icy-metadata"
 version = "0.1.4"
-rust-version = "1.70.0"
+rust-version = "1.71.0"
 edition = "2021"
 authors = ["Austin Schey <aschey13@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -24,7 +24,7 @@ rodio = { version = "0.20.1", default-features = false, features = [
   "symphonia-all",
 ] }
 rstest = "0.23.0"
-stream-download = { version = "0.12.0", features = ["reqwest-rustls"] }
+stream-download = { version = "0.13.0", features = ["reqwest-rustls"] }
 tokio = { version = "1.38.0", features = ["rt-multi-thread", "macros"] }
 
 [features]
