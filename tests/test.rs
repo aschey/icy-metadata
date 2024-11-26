@@ -20,6 +20,7 @@ fn read_headers() {
     headers.append("Icy-Description", "description".parse().unwrap());
     headers.append("Icy-Notice1", "notice1".parse().unwrap());
     headers.append("Icy-Notice2", "notice2".parse().unwrap());
+    headers.append("X-Loudness", "-1.0".parse().unwrap());
     headers.append(
         "Ice-Audio-Info",
         "ice-samplerate=44100;ice-bitrate=128;ice-channels=2;custom=yes;ice-quality=10%2e0"
@@ -38,6 +39,7 @@ fn read_headers() {
     assert_eq!(icy_headers.description().unwrap(), "description");
     assert_eq!(icy_headers.notice1().unwrap(), "notice1");
     assert_eq!(icy_headers.notice2().unwrap(), "notice2");
+    assert_eq!(icy_headers.loudness(), Some(-1.0));
 
     let audio_info = icy_headers.audio_info().unwrap();
     assert_eq!(audio_info.sample_rate().unwrap(), 44100);
