@@ -41,7 +41,7 @@ impl RequestIcyMetadata for reqwest::RequestBuilder {
 }
 
 /// Icy metadata found within HTTP response headers.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IcyHeaders {
     bitrate: Option<u32>,
@@ -53,6 +53,7 @@ pub struct IcyHeaders {
     public: Option<bool>,
     notice1: Option<String>,
     notice2: Option<String>,
+    loudness: Option<f32>,
     metadata_interval: Option<NonZeroUsize>,
     audio_info: Option<IcyAudioInfo>,
 }
@@ -108,6 +109,9 @@ impl IcyHeaders {
                 headers,
             )
             .and_then(|val| Some(val.to_str().ok()?.to_string())),
+            // I can't find any documentation on this header, but some servers return it
+            loudness: find_header(&["X-Loudness"], headers)
+                .and_then(|val| val.to_str().ok()?.to_string().parse().ok()),
             public: find_header(
                 &["ice-public", "icy-pub", "icy-public", "x-audiocast-public"],
                 headers,
@@ -168,6 +172,11 @@ impl IcyHeaders {
     /// If it's set, it might contain the Icecast/Shoutcast server version.
     pub fn notice2(&self) -> Option<&str> {
         self.notice2.as_deref()
+    }
+
+    /// Loudness normalization info.
+    pub fn loudness(&self) -> Option<f32> {
+        self.loudness
     }
 
     /// Whether the stream is listed or not.
