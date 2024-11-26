@@ -1,6 +1,6 @@
 [package]
 name = "icy-metadata"
-version = "0.1.4"
+version = "0.2.0"
 rust-version = "1.71.0"
 edition = "2021"
 authors = ["Austin Schey <aschey13@gmail.com>"]
