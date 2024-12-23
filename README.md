@@ -2,6 +2,7 @@
 
 [![crates.io](https://img.shields.io/crates/v/icy-metadata.svg?logo=rust)](https://crates.io/crates/icy-metadata)
 [![docs.rs](https://img.shields.io/docsrs/icy-metadata?logo=rust)](https://docs.rs/icy-metadata)
+[![Dependency Status](https://deps.rs/repo/github/aschey/icy-metadata/status.svg?style=flat-square)](https://deps.rs/repo/github/aschey/icy-metadata)
 ![license](https://img.shields.io/badge/License-MIT%20or%20Apache%202-green.svg)
 [![CI](https://github.com/aschey/icy-metadata/actions/workflows/ci.yml/badge.svg)](https://github.com/aschey/icy-metadata/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/aschey/icy-metadata/graph/badge.svg?token=cYArKUgtgH)](https://codecov.io/gh/aschey/icy-metadata)
@@ -54,8 +55,8 @@ use std::error::Error;
 use std::num::NonZeroUsize;
 
 use icy_metadata::{IcyHeaders, IcyMetadataReader, RequestIcyMetadata};
-use stream_download::http::reqwest::{self, Client};
 use stream_download::http::HttpStream;
+use stream_download::http::reqwest::{self, Client};
 use stream_download::storage::bounded::BoundedStorageProvider;
 use stream_download::storage::memory::MemoryStorageProvider;
 use stream_download::{Settings, StreamDownload};
