@@ -110,4 +110,4 @@ for details.
 
 ## Supported Rust Versions
 
-The MSRV is currently `1.71.0`.
+The MSRV is currently `1.81.0`.
