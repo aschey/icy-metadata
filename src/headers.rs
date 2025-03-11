@@ -120,7 +120,7 @@ impl IcyHeaders {
             .map(|public| {
                 // 1 and 0 are the only supported values, but we'll look for "true" as well
                 // because... why not
-                public == "1" || public.to_ascii_lowercase() == "true"
+                public == "1" || public.eq_ignore_ascii_case("true")
             }),
             metadata_interval: headers
                 .get("icy-metaint")
