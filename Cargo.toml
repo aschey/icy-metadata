@@ -27,6 +27,24 @@ rstest = "0.25.0"
 stream-download = { version = "0.18.0", features = ["reqwest-rustls"] }
 tokio = { version = "1.38.0", features = ["rt-multi-thread", "macros"] }
 
+
+[lints.rustdoc]
+broken_intra_doc_links = "deny"
+
+[lints.clippy]
+allow_attributes = "deny"
+doc_markdown = "warn"
+default_trait_access = "warn"
+ignored_unit_patterns = "warn"
+semicolon_if_nothing_returned = "warn"
+missing_fields_in_debug = "warn"
+use_self = "warn"
+impl_trait_in_params = "warn"
+missing_panics_doc = "warn"
+explicit_iter_loop = "warn"
+explicit_into_iter_loop = "warn"
+redundant_closure_for_method_calls = "warn"
+
 [features]
 serde = ["dep:serde"]
 reqwest = ["dep:reqwest"]

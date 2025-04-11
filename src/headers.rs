@@ -9,6 +9,10 @@ use crate::parse::{ParseResult, parse_delimited_string};
 pub const ICY_METADATA_HEADER: &str = "Icy-MetaData";
 
 /// Appends the `Icy-MetaData` header to the `header_map`.
+///
+/// # Panics
+///
+/// This method panics if the header map size is exceeded.
 pub fn add_icy_metadata_header(header_map: &mut HeaderMap) {
     header_map.append(
         ICY_METADATA_HEADER,

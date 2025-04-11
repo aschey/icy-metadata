@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::io::{self, Read, Seek, SeekFrom};
-use std::num::NonZeroUsize;
+use std::num::{NonZero, NonZeroUsize};
 use std::str::FromStr;
 
 use tracing::warn;
@@ -60,7 +60,7 @@ impl<T> IcyMetadataReader<T> {
     where
         F: Fn(Result<IcyMetadata, MetadataParseError>) + Send + Sync + 'static,
     {
-        let icy_metadata_interval = icy_metadata_interval.map(|i| i.get());
+        let icy_metadata_interval = icy_metadata_interval.map(NonZero::get);
         Self {
             inner,
             icy_metadata_interval,
