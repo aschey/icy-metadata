@@ -11,7 +11,7 @@ on:
   merge_group:
 
 env:
-  RUST_MIN: "1.81"
+  RUST_MIN: "1.85"
 
 jobs:
   test:
@@ -71,8 +71,7 @@ jobs:
 
   min-versions:
     name: Check min dependency versions
-    # newer ubuntu versions have problems with older versions of openssl-sys
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust nightly
