@@ -24,7 +24,7 @@ rodio = { version = "0.20.1", default-features = false, features = [
   "symphonia-all",
 ] }
 rstest = "0.25.0"
-stream-download = { version = "0.19.0", features = ["reqwest-rustls"] }
+stream-download = { version = "0.20.0", features = ["reqwest-rustls"] }
 tokio = { version = "1.38.0", features = ["rt-multi-thread", "macros"] }
 
 
