@@ -13,8 +13,6 @@ use stream_download::{Settings, StreamDownload};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let (_stream, handle) = rodio::OutputStream::try_default()?;
-
     let restart = Arc::new(AtomicBool::new(true));
 
     loop {
@@ -22,7 +20,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             return Ok(());
         }
 
-        let sink = rodio::Sink::try_new(&handle)?;
+        let stream_handle = rodio::OutputStreamBuilder::open_default_stream()?;
+        let sink = rodio::Sink::connect_new(stream_handle.mixer());
 
         // We need to add a header to tell the Icecast server that we can parse the metadata
         // embedded within the stream itself.
