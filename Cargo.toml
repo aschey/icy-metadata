@@ -21,7 +21,7 @@ tracing = "0.1.36"
 
 [dev-dependencies]
 rodio = { version = "0.21.1" }
-rstest = "0.25.0"
+rstest = "0.26.1"
 stream-download = { version = "0.22.1", features = ["reqwest-rustls"] }
 tokio = { version = "1.38.0", features = ["rt-multi-thread", "macros"] }
 
