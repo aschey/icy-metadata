@@ -6,7 +6,7 @@ pub(crate) struct ParseResult<'a> {
     pub(crate) missing_quotes_found: bool,
 }
 
-pub(crate) fn parse_delimited_string(val: &str) -> ParseResult {
+pub(crate) fn parse_delimited_string(val: &str) -> ParseResult<'_> {
     let elements = val.trim().split(';');
     let mut map = HashMap::new();
     let mut errors_found = false;
