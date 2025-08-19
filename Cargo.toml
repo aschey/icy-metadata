@@ -10,7 +10,7 @@ repository = "https://github.com/aschey/icy-metadata"
 keywords = ["audio", "stream", "media", "icecast", "icy"]
 categories = ["multimedia", "parsing"]
 description = "A library for parsing Icecast metadata"
-include = ["/src", "/examples", "/tests"]
+include = ["/src", "/examples", "/tests", "LICENSE-MIT", "LICENSE-APACHE"]
 
 [dependencies]
 http = "1"
