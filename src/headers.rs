@@ -58,6 +58,15 @@ pub struct IcyHeaders {
     notice1: Option<String>,
     notice2: Option<String>,
     loudness: Option<f32>,
+    logo_url: Option<String>,
+    main_stream_url: Option<String>,
+    version: Option<u32>,
+    index_metadata: Option<bool>,
+    country_code: Option<String>,
+    country_subdivision_code: Option<String>,
+    language_codes: Vec<String>,
+    geo_lat_long: Option<[f32; 2]>,
+    do_not_index: Option<bool>,
     metadata_interval: Option<NonZeroUsize>,
     audio_info: Option<IcyAudioInfo>,
 }
@@ -71,6 +80,15 @@ fn find_header(search: &[&str], headers: &HeaderMap) -> Option<String> {
     None
 }
 
+fn str_to_bool(val: &str) -> bool {
+    // 1 and 0 are the only typical values, but we'll look for a few other truthy values
+    val == "1" || val.eq_ignore_ascii_case("true") || val.eq_ignore_ascii_case("yes")
+}
+
+fn comma_separated(val: String) -> Vec<String> {
+    val.split(',').map(|s| s.trim_ascii().to_string()).collect()
+}
+
 impl IcyHeaders {
     /// Parse any icy metadata contained in the `headers`.
     pub fn parse_from_headers(headers: &HeaderMap) -> Self {
@@ -78,7 +96,7 @@ impl IcyHeaders {
         Self {
             bitrate: find_header(&["ice-bitrate", "icy-br", "x-audiocast-bitrate"], headers)
                 // sometimes there are multiple values here, we'll just take the first one
-                .and_then(|val| val.split(',').next()?.trim_ascii().parse().ok()),
+                .and_then(|val| comma_separated(val).first()?.parse().ok()),
             // Note: this isn't included in the Icecast-Server repo, but I've seen a few servers
             // include icy-sr as a header. Unclear if the other aliases here are
             // actually used at all
@@ -88,7 +106,7 @@ impl IcyHeaders {
             )
             .and_then(|val| val.parse().ok()),
             genre: find_header(&["ice-genre", "icy-genre", "x-audiocast-genre"], headers)
-                .map(|val| val.split(',').map(|s| s.trim_ascii().to_string()).collect())
+                .map(comma_separated)
                 .unwrap_or_default(),
             name: find_header(&["ice-name", "icy-name", "x-audiocast-name"], headers),
             description: find_header(
@@ -114,16 +132,35 @@ impl IcyHeaders {
                 &["ice-public", "icy-pub", "icy-public", "x-audiocast-public"],
                 headers,
             )
-            .map(|public| {
-                // 1 and 0 are the only supported values, but we'll look for "true" as well
-                // because... why not
-                public == "1" || public.eq_ignore_ascii_case("true")
+            .as_deref()
+            .map(str_to_bool),
+            logo_url: find_header(&["icy-logo"], headers),
+            main_stream_url: find_header(&["icy-main-stream-url"], headers),
+            version: find_header(&["icy-version"], headers).and_then(|h| h.parse().ok()),
+            index_metadata: find_header(&["icy-index-metadata"], headers)
+                .as_deref()
+                .map(str_to_bool),
+            country_code: find_header(&["icy-country-code"], headers),
+            country_subdivision_code: find_header(&["icy-country-subdivision-code"], headers),
+            language_codes: find_header(&["icy-language-codes", "icy-language-code"], headers)
+                .map(comma_separated)
+                .unwrap_or_default(),
+            geo_lat_long: find_header(&["icy-geo-lat-long"], headers).and_then(|h| {
+                if let [lat, long] = &comma_separated(h)[..] {
+                    if let (Ok(lat), Ok(long)) = (lat.parse(), long.parse()) {
+                        return Some([lat, long]);
+                    }
+                }
+                None
             }),
+            do_not_index: find_header(&["icy-do-not-index"], headers)
+                .as_deref()
+                .map(str_to_bool),
             metadata_interval: find_header(&["icy-metaint"], headers)
                 .and_then(|val| NonZeroUsize::new(val.parse().ok()?)),
-            audio_info: headers.get("ice-audio-info").and_then(|val| {
-                let ParseResult { map, .. } = parse_delimited_string(val.to_str().ok()?);
-                Some(IcyAudioInfo::parse_from_map(map))
+            audio_info: find_header(&["ice-audio-info", "icy-audio-info"], headers).map(|val| {
+                let ParseResult { map, .. } = parse_delimited_string(&val);
+                IcyAudioInfo::parse_from_map(map)
             }),
         }
     }
@@ -195,6 +232,57 @@ impl IcyHeaders {
     /// Stream quality.
     pub fn quality(&self) -> Option<String> {
         self.audio_info_prop(|a| a.quality.clone())
+    }
+
+    /// URL of the logo for she stream.
+    pub fn logo_url(&self) -> Option<&str> {
+        self.logo_url.as_deref()
+    }
+
+    /// The main URL for this stream.
+    pub fn main_stream_url(&self) -> Option<&str> {
+        self.main_stream_url.as_deref()
+    }
+
+    /// Version of the metadata spec. 1 is the default and 2 contains additional properties.
+    pub fn version(&self) -> Option<u32> {
+        self.version
+    }
+
+    /// An extra property that can be set to true to specify that the metadata is set correctly and
+    /// isn't just left as the default values.
+    pub fn index_metadata(&self) -> Option<bool> {
+        self.index_metadata
+    }
+
+    /// 2-letter country code for the stream. Values are specified in
+    /// [ISO 3166-1](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2).
+    pub fn country_code(&self) -> Option<&str> {
+        self.country_code.as_deref()
+    }
+
+    /// Code for the subdivision of the stream country. Values are specified in
+    /// [ISO 3166-2](https://en.wikipedia.org/wiki/ISO_3166-2).
+    pub fn country_subdivision_code(&self) -> Option<&str> {
+        self.country_subdivision_code.as_deref()
+    }
+
+    /// Language codes used by the stream. Can be a 2-letter code specified in
+    /// [ISO 639-1](https://en.wikipedia.org/wiki/List_of_ISO_639_language_codes) or
+    /// a 3-letter code specified in
+    /// [ISO 639-3](https://en.wikipedia.org/wiki/ISO_639-3).
+    pub fn language_codes(&self) -> &[String] {
+        &self.language_codes
+    }
+
+    /// Latitude and longitude of the stream.
+    pub fn geo_lat_long(&self) -> Option<[f32; 2]> {
+        self.geo_lat_long
+    }
+
+    /// Can be set to true if the stream operator wants it to be private.
+    pub fn do_not_index(&self) -> Option<bool> {
+        self.do_not_index
     }
 
     /// Additional properties, if available.
