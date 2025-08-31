@@ -31,7 +31,7 @@ fn read_headers() {
     let icy_headers = IcyHeaders::parse_from_headers(&headers);
     assert_eq!(icy_headers.bitrate().unwrap(), 128);
     assert_eq!(icy_headers.sample_rate().unwrap(), 44100);
-    assert_eq!(icy_headers.genre().unwrap(), "genre");
+    assert_eq!(icy_headers.genre().first().unwrap(), "genre");
     assert_eq!(icy_headers.name().unwrap(), "name");
     assert_eq!(icy_headers.station_url().unwrap(), "url");
     assert!(icy_headers.public().unwrap());
@@ -43,6 +43,20 @@ fn read_headers() {
     assert_eq!(icy_headers.channels().unwrap(), 2);
     assert_eq!(icy_headers.quality().unwrap(), "10.0");
     assert_eq!(icy_headers.custom().get("custom").unwrap(), "yes");
+}
+
+#[test]
+fn multiple_keys() {
+    let mut headers = HeaderMap::new();
+    headers.append("Icy-Genre", "genre1,genre2".parse().unwrap());
+    headers.append("Icy-Br", "128,256".parse().unwrap());
+
+    let icy_headers = IcyHeaders::parse_from_headers(&headers);
+    assert_eq!(icy_headers.bitrate().unwrap(), 128);
+    assert_eq!(
+        icy_headers.genre(),
+        &["genre1".to_string(), "genre2".to_string()]
+    );
 }
 
 #[test]
