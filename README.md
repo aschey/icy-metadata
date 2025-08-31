@@ -27,7 +27,9 @@ cargo add icy-metadata
 ## Headers
 
 Parse common Icecast headers from an HTTP response. `icy-metadata` will look for
-several common aliases to find the header values.
+several common aliases to find the header values. More information about Icecast
+headers can be found at
+[stream-meta.info](https://www.stream-meta.info/intro.html).
 
 ```rust,no_run
 use icy_metadata::IcyHeaders;

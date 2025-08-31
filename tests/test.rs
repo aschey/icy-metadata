@@ -22,6 +22,18 @@ fn read_headers() {
     headers.append("Icy-Notice2", "notice2".parse().unwrap());
     headers.append("X-Loudness", "-1.0".parse().unwrap());
     headers.append(
+        "Icy-Logo",
+        "http://my.super.logo/file.jpeg".parse().unwrap(),
+    );
+    headers.append("Icy-Main-Stream-Url", "http://stream.url".parse().unwrap());
+    headers.append("Icy-Version", "2".parse().unwrap());
+    headers.append("Icy-Index-Metadata", "1".parse().unwrap());
+    headers.append("Icy-Country-Code", "DE".parse().unwrap());
+    headers.append("Icy-Country-Subdivision-Code", "AM-ER".parse().unwrap());
+    headers.append("Icy-Language-Codes", "en".parse().unwrap());
+    headers.append("Icy-Geo-lat-long", "40.23,-20.86".parse().unwrap());
+    headers.append("Icy-Do-Not-Index", "1".parse().unwrap());
+    headers.append(
         "Ice-Audio-Info",
         "ice-samplerate=44100;ice-bitrate=128;ice-channels=2;custom=yes;ice-quality=10%2e0"
             .parse()
@@ -42,6 +54,19 @@ fn read_headers() {
     assert_eq!(icy_headers.loudness(), Some(-1.0));
     assert_eq!(icy_headers.channels().unwrap(), 2);
     assert_eq!(icy_headers.quality().unwrap(), "10.0");
+    assert_eq!(
+        icy_headers.logo_url().unwrap(),
+        "http://my.super.logo/file.jpeg"
+    );
+    assert_eq!(icy_headers.main_stream_url().unwrap(), "http://stream.url");
+    assert_eq!(icy_headers.version().unwrap(), 2);
+    assert!(icy_headers.index_metadata().unwrap());
+    assert_eq!(icy_headers.country_code().unwrap(), "DE");
+    assert_eq!(icy_headers.country_subdivision_code().unwrap(), "AM-ER");
+    assert_eq!(icy_headers.language_codes().first().unwrap(), "en");
+    assert_eq!(icy_headers.geo_lat_long().unwrap(), [40.23, -20.86]);
+    assert!(icy_headers.do_not_index().unwrap());
+
     assert_eq!(icy_headers.custom().get("custom").unwrap(), "yes");
 }
 
@@ -50,12 +75,17 @@ fn multiple_keys() {
     let mut headers = HeaderMap::new();
     headers.append("Icy-Genre", "genre1,genre2".parse().unwrap());
     headers.append("Icy-Br", "128,256".parse().unwrap());
+    headers.append("Icy-Language-Codes", "en,es".parse().unwrap());
 
     let icy_headers = IcyHeaders::parse_from_headers(&headers);
     assert_eq!(icy_headers.bitrate().unwrap(), 128);
     assert_eq!(
         icy_headers.genre(),
         &["genre1".to_string(), "genre2".to_string()]
+    );
+    assert_eq!(
+        icy_headers.language_codes(),
+        &["en".to_string(), "es".to_string()]
     );
 }
 
