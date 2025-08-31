@@ -322,8 +322,9 @@ impl FromStr for IcyMetadata {
                 }
             }
         }
-        // Escaping characters like quotes, semicolons, and equal signs within the metadata string
-        // doesn't seem to be well-defined Here we try to handle the scenario where a stray
+        // Methods for escaping characters like quotes, semicolons, and equal signs within the
+        // metadata string don't seem to be well-defined.
+        // Here we try to handle the scenario where a stray
         // semicolon in one of the values messes with the parsing by relying on the fact
         // that StreamTitle and StreamUrl should be the only valid keys
         if errors_found || stray_values_found {

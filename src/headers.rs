@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
-use http::{HeaderMap, HeaderValue};
+use http::HeaderMap;
 
 use crate::parse::{ParseResult, parse_delimited_string};
 
@@ -50,7 +50,7 @@ impl RequestIcyMetadata for reqwest::RequestBuilder {
 pub struct IcyHeaders {
     bitrate: Option<u32>,
     sample_rate: Option<u32>,
-    genre: Option<String>,
+    genre: Vec<String>,
     name: Option<String>,
     station_url: Option<String>,
     description: Option<String>,
@@ -62,10 +62,10 @@ pub struct IcyHeaders {
     audio_info: Option<IcyAudioInfo>,
 }
 
-fn find_header<'a>(search: &[&'a str], headers: &'a HeaderMap) -> Option<&'a HeaderValue> {
+fn find_header(search: &[&str], headers: &HeaderMap) -> Option<String> {
     for header in search {
         if let Some(val) = headers.get(*header) {
-            return Some(val);
+            return val.to_str().ok().map(|s| s.trim_ascii().to_string());
         }
     }
     None
@@ -77,9 +77,8 @@ impl IcyHeaders {
         // Most header names taken from here https://github.com/xiph/Icecast-Server/blob/master/src/source.c
         Self {
             bitrate: find_header(&["ice-bitrate", "icy-br", "x-audiocast-bitrate"], headers)
-                .and_then(|val| val.to_str().ok())
                 // sometimes there are multiple values here, we'll just take the first one
-                .and_then(|val| val.split(',').next()?.parse().ok()),
+                .and_then(|val| val.split(',').next()?.trim_ascii().parse().ok()),
             // Note: this isn't included in the Icecast-Server repo, but I've seen a few servers
             // include icy-sr as a header. Unclear if the other aliases here are
             // actually used at all
@@ -87,11 +86,11 @@ impl IcyHeaders {
                 &["ice-samplerate", "icy-sr", "x-audiocast-samplerate"],
                 headers,
             )
-            .and_then(|val| val.to_str().ok()?.parse().ok()),
+            .and_then(|val| val.parse().ok()),
             genre: find_header(&["ice-genre", "icy-genre", "x-audiocast-genre"], headers)
-                .and_then(|val| Some(val.to_str().ok()?.to_string())),
-            name: find_header(&["ice-name", "icy-name", "x-audiocast-name"], headers)
-                .and_then(|val| Some(val.to_str().ok()?.to_string())),
+                .map(|val| val.split(',').map(|s| s.trim_ascii().to_string()).collect())
+                .unwrap_or_default(),
+            name: find_header(&["ice-name", "icy-name", "x-audiocast-name"], headers),
             description: find_header(
                 &[
                     "ice-description",
@@ -99,36 +98,29 @@ impl IcyHeaders {
                     "x-audiocast-description",
                 ],
                 headers,
-            )
-            .and_then(|val| Some(val.to_str().ok()?.to_string())),
-            station_url: find_header(&["ice-url", "icy-url", "x-audiocast-url"], headers)
-                .and_then(|val| Some(val.to_str().ok()?.to_string())),
+            ),
+            station_url: find_header(&["ice-url", "icy-url", "x-audiocast-url"], headers),
             notice1: find_header(
                 &["ice-notice1", "icy-notice1", "x-audiocast-notice1"],
                 headers,
-            )
-            .and_then(|val| Some(val.to_str().ok()?.to_string())),
+            ),
             notice2: find_header(
                 &["ice-notice2", "icy-notice2", "x-audiocast-notice2"],
                 headers,
-            )
-            .and_then(|val| Some(val.to_str().ok()?.to_string())),
+            ),
             // I can't find any documentation on this header, but some servers return it
-            loudness: find_header(&["X-Loudness"], headers)
-                .and_then(|val| val.to_str().ok()?.to_string().parse().ok()),
+            loudness: find_header(&["X-Loudness"], headers).and_then(|val| val.parse().ok()),
             public: find_header(
                 &["ice-public", "icy-pub", "icy-public", "x-audiocast-public"],
                 headers,
             )
-            .and_then(|val| Some(val.to_str().ok()?.to_string()))
             .map(|public| {
                 // 1 and 0 are the only supported values, but we'll look for "true" as well
                 // because... why not
                 public == "1" || public.eq_ignore_ascii_case("true")
             }),
-            metadata_interval: headers
-                .get("icy-metaint")
-                .and_then(|val| NonZeroUsize::new(val.to_str().ok()?.to_string().parse().ok()?)),
+            metadata_interval: find_header(&["icy-metaint"], headers)
+                .and_then(|val| NonZeroUsize::new(val.parse().ok()?)),
             audio_info: headers.get("ice-audio-info").and_then(|val| {
                 let ParseResult { map, .. } = parse_delimited_string(val.to_str().ok()?);
                 Some(IcyAudioInfo::parse_from_map(map))
@@ -154,8 +146,8 @@ impl IcyHeaders {
     }
 
     /// Stream genre.
-    pub fn genre(&self) -> Option<&str> {
-        self.genre.as_deref()
+    pub fn genre(&self) -> &[String] {
+        &self.genre
     }
 
     /// Stream description.
@@ -240,6 +232,8 @@ impl IcyAudioInfo {
             custom: HashMap::new(),
         };
         for (key, value) in map {
+            let key = key.trim_ascii();
+            let value = value.trim_ascii();
             let Ok(key) = urlencoding::decode(key) else {
                 continue;
             };
@@ -257,7 +251,7 @@ impl IcyAudioInfo {
                     info.channels = value.parse().ok();
                 }
                 "icy-quality" | "ice-quality" | "quality" => {
-                    info.quality = value.parse().ok();
+                    info.quality = value.into_owned().into();
                 }
                 _ => {
                     info.custom.insert(key.to_string(), value.to_string());
