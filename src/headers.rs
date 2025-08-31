@@ -136,14 +136,21 @@ impl IcyHeaders {
         }
     }
 
+    fn audio_info_prop<F, T>(&self, f: F) -> Option<T>
+    where
+        F: Fn(&IcyAudioInfo) -> Option<T>,
+    {
+        self.audio_info.as_ref().and_then(f)
+    }
+
     /// Stream bitrate.
     pub fn bitrate(&self) -> Option<u32> {
-        self.bitrate
+        self.bitrate.or(self.audio_info_prop(|a| a.bitrate))
     }
 
     /// Stream sample rate.
     pub fn sample_rate(&self) -> Option<u32> {
-        self.sample_rate
+        self.sample_rate.or(self.audio_info_prop(|a| a.sample_rate))
     }
 
     /// Stream genre.
@@ -188,6 +195,22 @@ impl IcyHeaders {
         self.public
     }
 
+    /// Number of channels in the stream.
+    pub fn channels(&self) -> Option<u16> {
+        self.audio_info_prop(|a| a.channels)
+    }
+
+    /// Stream quality.
+    pub fn quality(&self) -> Option<String> {
+        self.audio_info_prop(|a| a.quality.clone())
+    }
+
+    /// Additional properties, if available.
+    pub fn custom(&self) -> HashMap<String, String> {
+        self.audio_info_prop(|a| Some(a.custom.clone()))
+            .unwrap_or_default()
+    }
+
     /// This will only be set if the stream was requested with the `Icy-MetaInt` header set to `1`.
     /// Use the convenience functions in this crate to set this, or add the header yourself.
     /// This needs to be passed in to [`IcyMetadataReader::new`](crate::IcyMetadataReader::new) in
@@ -195,17 +218,11 @@ impl IcyHeaders {
     pub fn metadata_interval(&self) -> Option<NonZeroUsize> {
         self.metadata_interval
     }
-
-    /// Additional audio properties, if available.
-    pub fn audio_info(&self) -> Option<&IcyAudioInfo> {
-        self.audio_info.as_ref()
-    }
 }
 
-/// Optional additional information about the stream audio
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct IcyAudioInfo {
+struct IcyAudioInfo {
     sample_rate: Option<u32>,
     bitrate: Option<u32>,
     channels: Option<u16>,
@@ -248,30 +265,5 @@ impl IcyAudioInfo {
             }
         }
         info
-    }
-
-    /// Stream sample rate.
-    pub fn sample_rate(&self) -> Option<u32> {
-        self.sample_rate
-    }
-
-    /// Stream bitrate.
-    pub fn bitrate(&self) -> Option<u32> {
-        self.bitrate
-    }
-
-    /// Number of channels in the stream.
-    pub fn channels(&self) -> Option<u16> {
-        self.channels
-    }
-
-    /// Stream quality.
-    pub fn quality(&self) -> Option<&str> {
-        self.quality.as_deref()
-    }
-
-    /// Additional properties, if available.
-    pub fn custom(&self) -> &HashMap<String, String> {
-        &self.custom
     }
 }

@@ -40,13 +40,9 @@ fn read_headers() {
     assert_eq!(icy_headers.notice1().unwrap(), "notice1");
     assert_eq!(icy_headers.notice2().unwrap(), "notice2");
     assert_eq!(icy_headers.loudness(), Some(-1.0));
-
-    let audio_info = icy_headers.audio_info().unwrap();
-    assert_eq!(audio_info.sample_rate().unwrap(), 44100);
-    assert_eq!(audio_info.bitrate().unwrap(), 128);
-    assert_eq!(audio_info.channels().unwrap(), 2);
-    assert_eq!(audio_info.quality().unwrap(), "10.0");
-    assert_eq!(audio_info.custom().get("custom").unwrap(), "yes");
+    assert_eq!(icy_headers.channels().unwrap(), 2);
+    assert_eq!(icy_headers.quality().unwrap(), "10.0");
+    assert_eq!(icy_headers.custom().get("custom").unwrap(), "yes");
 }
 
 #[test]
@@ -292,7 +288,7 @@ fn empty_metadata(
             Err(MetadataParseError::Empty(EmptyMetadataError(
                 "".to_string()
             )))
-        )
+        );
     }
 }
 
@@ -340,7 +336,7 @@ fn seek_from_start(
 
     let metadata = metadata.read().unwrap();
     for (i, out) in metadata_out.iter().enumerate() {
-        assert_eq!(metadata[i].clone().unwrap().stream_url().unwrap(), *out)
+        assert_eq!(metadata[i].clone().unwrap().stream_url().unwrap(), *out);
     }
 }
 
@@ -372,7 +368,7 @@ fn seek_from_start_to_future(
 
     let metadata = metadata.read().unwrap();
     for (i, out) in metadata_out.iter().enumerate() {
-        assert_eq!(metadata[i].clone().unwrap().stream_url().unwrap(), *out)
+        assert_eq!(metadata[i].clone().unwrap().stream_url().unwrap(), *out);
     }
 }
 
