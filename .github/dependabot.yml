@@ -13,6 +13,13 @@ updates:
       # tokio is quite stable, we don't need to update every minor version
       - dependency-name: "tokio"
         update-types: ["version-update:semver-minor"]
+  - package-ecosystem: "rust-toolchain"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "friday"
+    commit-message:
+      prefix: "chore"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
