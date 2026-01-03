@@ -16,7 +16,7 @@ include = ["/src", "/examples", "/tests", "LICENSE-MIT", "LICENSE-APACHE"]
 http = "1"
 urlencoding = "2"
 serde = { version = "1.0.134", features = ["derive"], optional = true }
-reqwest = { version = "0.12", default-features = false, optional = true }
+reqwest = { version = "0.13", default-features = false, optional = true }
 tracing = "0.1.36"
 
 [dev-dependencies]
