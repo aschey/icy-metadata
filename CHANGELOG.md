@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.5.2](https://github.com/aschey/icy-metadata/compare/v0.5.1..v0.5.2) - 2026-01-10
+## [0.5.2](https://github.com/aschey/icy-metadata/compare/v0.5.1..v0.6.0) - 2026-01-10
 
 ### Dependencies
 
