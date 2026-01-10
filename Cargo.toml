@@ -13,7 +13,7 @@ description = "A library for parsing Icecast metadata"
 include = ["/src", "/examples", "/tests", "LICENSE-MIT", "LICENSE-APACHE"]
 
 [dependencies]
-http = "1"
+http = "1.1"
 urlencoding = "2"
 serde = { version = "1.0.134", features = ["derive"], optional = true }
 reqwest = { version = "0.13", default-features = false, optional = true }
