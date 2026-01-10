@@ -13,16 +13,16 @@ description = "A library for parsing Icecast metadata"
 include = ["/src", "/examples", "/tests", "LICENSE-MIT", "LICENSE-APACHE"]
 
 [dependencies]
-http = "1"
+http = "1.1"
 urlencoding = "2"
 serde = { version = "1.0.134", features = ["derive"], optional = true }
-reqwest = { version = "0.12", default-features = false, optional = true }
+reqwest = { version = "0.13", default-features = false, optional = true }
 tracing = "0.1.36"
 
 [dev-dependencies]
 rodio = { version = "0.21.1" }
 rstest = "0.26.1"
-stream-download = { version = "0.22.1", features = ["reqwest-rustls"] }
+stream-download = { version = "0.23.0", features = ["reqwest-rustls"] }
 tokio = { version = "1.38.0", features = ["rt-multi-thread", "macros"] }
 
 

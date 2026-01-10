@@ -1,4 +1,4 @@
-#![deny(missing_docs)]
+#![warn(missing_docs, missing_debug_implementations)]
 #![forbid(unsafe_code)]
 #![forbid(clippy::unwrap_used)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
