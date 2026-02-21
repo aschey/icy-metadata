@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use icy_metadata::{IcyHeaders, IcyMetadataReader, RequestIcyMetadata};
+use rodio::{DeviceSinkBuilder, Player};
 use stream_download::http::HttpStream;
 use stream_download::http::reqwest::Client;
 use stream_download::source::DecodeError;
@@ -12,16 +13,13 @@ use stream_download::storage::memory::MemoryStorageProvider;
 use stream_download::{Settings, StreamDownload};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let restart = Arc::new(AtomicBool::new(true));
 
     loop {
         if !restart.swap(false, Ordering::Relaxed) {
             return Ok(());
         }
-
-        let stream_handle = rodio::OutputStreamBuilder::open_default_stream()?;
-        let sink = rodio::Sink::connect_new(stream_handle.mixer());
 
         // We need to add a header to tell the Icecast server that we can parse the metadata
         // embedded within the stream itself.
@@ -67,20 +65,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
             Err(e) => return Err(e.decode_error().await)?,
         };
 
-        sink.append(rodio::Decoder::new(IcyMetadataReader::new(
-            reader,
-            // Since we requested icy metadata, the metadata interval header should be present in
-            // the response. This will allow us to parse the metadata within the stream
-            icy_headers.metadata_interval(),
-            // Print the stream metadata whenever we receive new values
-            |metadata| {
-                println!("{metadata:#?}\n");
-            },
-        ))?);
-
         let handle = tokio::task::spawn_blocking(move || {
-            sink.sleep_until_end();
+            let sink = DeviceSinkBuilder::open_default_sink()?;
+            let player = Player::connect_new(sink.mixer());
+
+            player.append(rodio::Decoder::new(IcyMetadataReader::new(
+                reader,
+                // Since we requested icy metadata, the metadata interval header should be present
+                // in the response. This will allow us to parse the metadata within
+                // the stream
+                icy_headers.metadata_interval(),
+                // Print the stream metadata whenever we receive new values
+                |metadata| {
+                    println!("{metadata:#?}\n");
+                },
+            ))?);
+
+            player.sleep_until_end();
+            Ok::<_, Box<dyn Error + Send + Sync>>(())
         });
-        handle.await?;
+        handle.await??;
     }
 }

@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use icy_metadata::{IcyHeaders, IcyMetadataReader, RequestIcyMetadata};
-use rodio::source::SeekError;
+use rodio::{DeviceSinkBuilder, Player};
 use stream_download::http::HttpStream;
 use stream_download::http::reqwest::Client;
 use stream_download::source::DecodeError;
@@ -12,10 +12,7 @@ use stream_download::storage::memory::MemoryStorageProvider;
 use stream_download::{Settings, StreamDownload};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let stream_handle = rodio::OutputStreamBuilder::open_default_stream()?;
-    let sink = rodio::Sink::connect_new(stream_handle.mixer());
-
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     // We need to add a header to tell the Icecast server that we can parse the metadata embedded
     // within the stream itself.
     let client = Client::builder().request_icy_metadata().build()?;
@@ -47,31 +44,35 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Ok(reader) => reader,
         Err(e) => return Err(e.decode_error().await)?,
     };
-    sink.append(
-        rodio::Decoder::builder()
-            .with_seekable(true)
-            .with_data(IcyMetadataReader::new(
-                reader,
-                // Since we requested icy metadata, the metadata interval header should be present
-                // in the response. This will allow us to parse the metadata within
-                // the stream
-                icy_headers.metadata_interval(),
-                // Print the stream metadata whenever we receive new values
-                |metadata| println!("{metadata:#?}\n"),
-            ))
-            .build()?,
-    );
 
     let handle = tokio::task::spawn_blocking(move || {
+        let sink = DeviceSinkBuilder::open_default_sink()?;
+        let player = Player::connect_new(sink.mixer());
+
+        player.append(
+            rodio::Decoder::builder()
+                .with_seekable(true)
+                .with_data(IcyMetadataReader::new(
+                    reader,
+                    // Since we requested icy metadata, the metadata interval header should be
+                    // present in the response. This will allow us to parse the
+                    // metadata within the stream
+                    icy_headers.metadata_interval(),
+                    // Print the stream metadata whenever we receive new values
+                    |metadata| println!("{metadata:#?}\n"),
+                ))
+                .build()?,
+        );
+
         println!("seeking in 5 seconds\n");
         std::thread::sleep(Duration::from_secs(5));
         println!("seeking to beginning\n");
-        sink.try_seek(Duration::from_secs(0))?;
+        player.try_seek(Duration::from_secs(0))?;
         std::thread::sleep(Duration::from_secs(5));
         println!("seeking to 10 seconds\n");
-        sink.try_seek(Duration::from_secs(10))?;
-        sink.sleep_until_end();
-        Ok::<_, SeekError>(())
+        player.try_seek(Duration::from_secs(10))?;
+        player.sleep_until_end();
+        Ok::<_, Box<dyn Error + Send + Sync>>(())
     });
     handle.await??;
     Ok(())
