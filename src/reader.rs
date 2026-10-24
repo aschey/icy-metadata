@@ -23,12 +23,15 @@ use crate::parse::{ParseResult, parse_delimited_string, parse_value_if_valid};
 ///   consecutive metadata entries of the same size don't take up additional slots in the array.
 ///   This means you shouldn't exceed the default value of `128` unless you're going really far
 ///   back.
+/// - Incomplete metadata must be read before seeking. Position queries remain supported.
 pub struct IcyMetadataReader<T> {
     inner: T,
     icy_metadata_interval: Option<usize>,
     next_metadata: usize,
     metadata_size_queue: MetadataSizeQueue,
     current_pos: u64,
+    pending_metadata: Option<Vec<u8>>,
+    metadata_read: usize,
     on_metadata_read: Box<dyn Fn(Result<IcyMetadata, MetadataParseError>) + Send + Sync>,
 }
 
@@ -40,6 +43,11 @@ impl<T> Debug for IcyMetadataReader<T> {
             .field("next_metadata", &self.next_metadata)
             .field("metadata_size_queue", &self.metadata_size_queue)
             .field("current_pos", &self.current_pos)
+            .field(
+                "pending_metadata",
+                &self.pending_metadata.as_ref().map(Vec::len),
+            )
+            .field("metadata_read", &self.metadata_read)
             .field("on_metadata_read", &"<on_metadata_read>")
             .finish()
     }
@@ -72,6 +80,8 @@ impl<T> IcyMetadataReader<T> {
             },
 
             current_pos: 0,
+            pending_metadata: None,
+            metadata_read: 0,
         }
     }
 }
@@ -93,67 +103,70 @@ where
     T: Read,
 {
     fn parse_metadata_from_stream(&mut self, buf: &mut [u8], metaint: usize) -> io::Result<usize> {
-        let to_fill = buf.len();
-        let mut total_written = 0;
-        while total_written < to_fill {
-            let prev_written = total_written;
-            self.parse_next_metadata(buf, metaint, &mut total_written)?;
-            // No additional data written, we're at the end of the stream
-            if total_written == prev_written {
-                break;
+        let mut written = 0;
+        while written < buf.len() {
+            if self.next_metadata == 0 {
+                if let Err(error) = self.read_metadata() {
+                    // Return any audio read; retain incomplete metadata for the next call.
+                    return if written == 0 {
+                        Err(error)
+                    } else {
+                        Ok(written)
+                    };
+                }
+                self.next_metadata = metaint;
+            }
+            let count = self.next_metadata.min(buf.len() - written);
+            match self.inner.read(&mut buf[written..written + count]) {
+                Ok(0) => break,
+                Ok(count) => {
+                    self.next_metadata -= count;
+                    self.current_pos += count as u64;
+                    written += count;
+                }
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) => {
+                    return if written == 0 {
+                        Err(error)
+                    } else {
+                        Ok(written)
+                    };
+                }
             }
         }
-        self.current_pos += total_written as u64;
-        Ok(total_written)
-    }
-
-    fn parse_next_metadata(
-        &mut self,
-        buf: &mut [u8],
-        metaint: usize,
-        total_written: &mut usize,
-    ) -> io::Result<()> {
-        let to_fill = buf.len();
-
-        if self.next_metadata > 0 {
-            // Read data before next metadata
-            let written = self.inner.read(&mut buf[..self.next_metadata])?;
-            if written == 0 {
-                return Ok(());
-            }
-            *total_written += written;
-        }
-
-        self.read_metadata()?;
-        self.next_metadata = metaint;
-        let start = *total_written;
-
-        // make sure we don't exceed the buffer length
-        let end = (start + self.next_metadata).min(to_fill);
-        let written = self.inner.read(&mut buf[start..end])?;
-        *total_written += written;
-        self.next_metadata = metaint - written;
-        Ok(())
-    }
-
-    fn update_metadata_size(&mut self) -> io::Result<()> {
-        let mut metadata_length_buf = [0u8; 1];
-        self.inner.read_exact(&mut metadata_length_buf)?;
-
-        let metadata_length = metadata_length_buf[0] as usize * ICY_METADATA_MULTIPLIER;
-
-        self.metadata_size_queue.push(metadata_length);
-        Ok(())
+        Ok(written)
     }
 
     fn read_metadata(&mut self) -> io::Result<()> {
-        self.update_metadata_size()?;
-        if let Some(last_size) = self.metadata_size_queue.peek() {
-            if last_size > 0 {
-                let mut metadata_buf = vec![0u8; last_size];
-                self.inner.read_exact(&mut metadata_buf)?;
-
-                let callback_val = String::from_utf8(metadata_buf)
+        if self.pending_metadata.is_none() {
+            let mut length = [0u8; 1];
+            loop {
+                match self.inner.read(&mut length) {
+                    Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
+                    Ok(_) => break,
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                    Err(error) => return Err(error),
+                }
+            }
+            // ICY's one-byte length bounds this allocation to 4080 bytes.
+            self.pending_metadata = Some(vec![0; usize::from(length[0]) * ICY_METADATA_MULTIPLIER]);
+            self.metadata_read = 0;
+        }
+        if let Some(metadata) = self.pending_metadata.as_mut() {
+            while self.metadata_read < metadata.len() {
+                match self.inner.read(&mut metadata[self.metadata_read..]) {
+                    Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
+                    Ok(count) => self.metadata_read += count,
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                    Err(error) => return Err(error),
+                }
+            }
+        }
+        if let Some(metadata) = self.pending_metadata.take() {
+            self.metadata_size_queue.push(metadata.len());
+            self.metadata_read = 0;
+            if !metadata.is_empty() {
+                let callback_val = String::from_utf8(metadata)
                     .map_err(MetadataParseError::InvalidUtf8)
                     .and_then(|metadata_str| {
                         let metadata_str = metadata_str.trim_end_matches(char::from(0));
@@ -178,14 +191,7 @@ where
             return self.inner.read(buf);
         };
 
-        if buf.len() > self.next_metadata {
-            self.parse_metadata_from_stream(buf, metaint)
-        } else {
-            let read = self.inner.read(buf)?;
-            self.next_metadata -= read;
-            self.current_pos += read as u64;
-            Ok(read)
-        }
+        self.parse_metadata_from_stream(buf, metaint)
     }
 }
 
@@ -198,6 +204,17 @@ where
         let Some(metaint) = self.icy_metadata_interval else {
             return self.inner.seek(seek_from);
         };
+
+        if seek_from == SeekFrom::Current(0) {
+            return Ok(self.current_pos);
+        }
+        // Audio offsets cannot be applied from inside a metadata block.
+        if self.pending_metadata.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "seek during incomplete metadata",
+            ));
+        }
 
         let (requested_change, requested_pos) = match seek_from {
             SeekFrom::Start(pos) => (pos as i64 - self.current_pos as i64, pos as i64),
@@ -246,8 +263,11 @@ where
                 self.inner
                     .seek(SeekFrom::Current(self.next_metadata as i64))?;
                 seek_progress += self.next_metadata as i64;
-                // Read the metadata and continue
+                // Commit progress before reading metadata, which may fail.
+                self.current_pos += self.next_metadata as u64;
+                self.next_metadata = 0;
                 self.read_metadata()?;
+                self.next_metadata = metaint;
             }
         }
         self.inner
@@ -414,9 +434,5 @@ impl MetadataSizeQueue {
             self.inner.pop_back();
         }
         Some(size)
-    }
-
-    fn peek(&self) -> Option<usize> {
-        self.inner.back().map(|b| b.size)
     }
 }
